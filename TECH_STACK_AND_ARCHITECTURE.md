@@ -2,6 +2,7 @@
 
 ## Frontend Core
 - **Framework**: React Native (Expo SDK 54).
+- **Entry Point**: `index.js` personalizado para la inyección temprana de polyfills de red.
 - **Componentes**: Pure Core Components (`View`, `Text`, `StyleSheet`, `ScrollView`).
 - **Navegación**: Basada en estados simples y `expo-router` para la jerarquía básica.
 - **Animaciones**: `Animated` de React Native o `react-native-reanimated` (incluida en Expo).

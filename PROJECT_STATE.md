@@ -11,6 +11,9 @@
 - **Autenticación & Performance**:
     - Corregido bucle infinito de sincronización en `AuthService.ts`.
     - Implementado cache de sesión (`lastSyncedUserId`) para evitar upserts redundantes en la tabla `profiles`.
+- **Compatibilidad Móvil (Fix v18.1.3)**:
+    - Reinstalado `@react-native-async-storage/async-storage` usando `npx expo install` para asegurar la versión exacta compatible con el SDK 54.
+    - Resuelto error `AsyncStorageError: Native module is null`.
 - **UI**: 
     - Limpieza de logs redundantes en consola.
 
