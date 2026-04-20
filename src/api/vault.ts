@@ -7,6 +7,7 @@ export interface VaultWord {
   word_en: string;
   category?: string;
   status?: 'learning' | 'mastered';
+  mastery_percent?: number;
   created_at?: string;
 }
 
@@ -96,6 +97,43 @@ export const VaultService = {
     if (error) {
       console.error('Error deleting word:', error);
       return { success: false, error };
+    }
+    return { success: true };
+  },
+
+  /**
+   * Sincroniza palabras acertadas en un juego.
+   * Si la palabra ya existe, puede aumentar su maestría (en este caso lo fijamos al 20% inicial).
+   * Si no existe, se crea con 20%.
+   */
+  async syncMatchedWords(userId: string, words: { word: string, translation: string }[]) {
+    for (const w of words) {
+      // Intentamos buscar si ya existe
+      const { data: existing } = await supabase
+        .from('user_vault')
+        .select('id, mastery_percent')
+        .eq('user_id', userId)
+        .eq('word_en', w.translation)
+        .maybeSingle();
+
+      if (existing) {
+        // Si ya existe, nos aseguramos de que tenga al menos 20%
+        if ((existing.mastery_percent || 0) < 20) {
+          await supabase
+            .from('user_vault')
+            .update({ mastery_percent: 20 })
+            .eq('id', existing.id);
+        }
+      } else {
+        // Si no existe, se agrega nueva
+        await this.addVaultItem({
+          user_id: userId,
+          word_es: w.word,
+          word_en: w.translation,
+          status: 'learning',
+          mastery_percent: 20
+        });
+      }
     }
     return { success: true };
   }

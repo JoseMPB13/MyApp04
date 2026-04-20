@@ -18,6 +18,7 @@ import AuthSection from '../src/screens/AuthSection';
 import { MissionsService, StreakData } from '../src/api/missions';
 import ActividadesSection from '../src/screens/ActividadesSection';
 import VaultSection from '../src/screens/VaultSection';
+import { VaultService } from '../src/api/vault';
 
 // El USER_ID ahora se obtiene dinámicamente de la sesión de Supabase
 
@@ -133,6 +134,30 @@ export default function HomeScreen() {
   const [streak, setStreak] = useState<StreakData | null>(null);
   const [session, setSession] = useState<any>(null);
   const [initializing, setInitializing] = useState(true);
+  const [isNavVisible, setIsNavVisible] = useState(true);
+  const navAnim = useRef(new Animated.Value(0)).current;
+
+  const toggleNav = () => {
+    const toValue = isNavVisible ? 130 : 0;
+    Animated.spring(navAnim, {
+      toValue,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 40,
+    }).start();
+    setIsNavVisible(!isNavVisible);
+  };
+
+  const handleMissionStateChange = (active: boolean) => {
+    const toValue = active ? 130 : 0;
+    Animated.spring(navAnim, {
+      toValue,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 40,
+    }).start();
+    setIsNavVisible(!active);
+  };
 
   useEffect(() => {
     // 1. Obtener sesión inicial
@@ -172,11 +197,21 @@ export default function HomeScreen() {
     setStreak(data);
   };
 
-  const handleMissionComplete = async () => {
+
+
+  const handleMissionComplete = async (missionType: string, data?: any) => {
     if (!session?.user?.id) return;
-    const result = await MissionsService.completeMission(session.user.id, 'word-matcher');
+    
+    const result = await MissionsService.completeMission(session.user.id, missionType);
+    
     if (result.success) {
+      // Si es Word Matcher, sincronizar palabras al Baúl con 20% de maestría
+      if (missionType === 'word-matcher' && data) {
+        await VaultService.syncMatchedWords(session.user.id, data);
+      }
+      
       loadGlobalData();
+      handleMissionStateChange(false); // Asegurar que la barra vuelva al completar
       setActiveTab('inicio');
     }
   };
@@ -195,12 +230,40 @@ export default function HomeScreen() {
       
       <View style={styles.mainContent}>
         {activeTab === 'inicio' && <InicioSection streak={streak} />}
-        {activeTab === 'activities' && <ActividadesSection onComplete={handleMissionComplete} />}
+        {activeTab === 'activities' && (
+          <ActividadesSection 
+            userId={session.user.id} 
+            onComplete={handleMissionComplete} 
+            onMissionStateChange={handleMissionStateChange}
+          />
+        )}
         {activeTab === 'vault' && <VaultSection userId={session.user.id} />}
-        {activeTab === 'settings' && <SettingsScreen email={session.user.email} onLogout={() => AuthService.signOut()} />}
+        {activeTab === 'settings' && (
+          <SettingsScreen 
+            email={session.user.email} 
+            onLogout={() => AuthService.signOut()} 
+            onToggleNav={toggleNav}
+            navHidden={!isNavVisible}
+          />
+        )}
       </View>
 
-      <View style={styles.navContainer}>
+      <TouchableOpacity 
+        style={[
+          styles.navHandle, 
+          styles.cardShadow, 
+          { bottom: isNavVisible ? 120 : 20 }
+        ]} 
+        onPress={toggleNav}
+      >
+        <Ionicons 
+          name={isNavVisible ? "chevron-down" : "chevron-up"} 
+          size={20} 
+          color="#575fcf" 
+        />
+      </TouchableOpacity>
+
+      <Animated.View style={[styles.navContainer, { transform: [{ translateY: navAnim }] }]}>
         <View style={[styles.navBar, styles.cardShadow]}>
           {['inicio', 'activities', 'vault', 'settings'].map((tab) => (
             <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={styles.navItem} activeOpacity={0.6}>
@@ -211,14 +274,26 @@ export default function HomeScreen() {
             </TouchableOpacity>
           ))}
         </View>
-      </View>
+      </Animated.View>
     </SafeAreaView>
   );
 }
 
-const SettingsScreen = ({ email, onLogout }: any) => (
+const SettingsScreen = ({ email, onLogout, onToggleNav, navHidden }: any) => (
   <View style={styles.sectionPadding}>
     <Text style={styles.sectionTitle}>Ajustes</Text>
+    
+    <View style={[styles.chatBubble, styles.cardShadow, { marginBottom: 16, borderRadius: 20 }]}>
+      <Text style={styles.coachName}>Modo Inmersivo</Text>
+      <Text style={styles.coachMsg}>Usa este botón para ocultar o mostrar la barra de navegación.</Text>
+      <TouchableOpacity 
+        style={[styles.miniButton, { marginTop: 12, backgroundColor: navHidden ? '#575fcf' : '#d2dae2' }]} 
+        onPress={onToggleNav}
+      >
+        <Text style={{ color: '#FFF', fontWeight: '900' }}>{navHidden ? 'Mostrar Barra' : 'Ocultar Barra'}</Text>
+      </TouchableOpacity>
+    </View>
+
     <View style={[styles.chatBubble, styles.cardShadow, { marginBottom: 24, borderRadius: 20 }]}>
       <Text style={styles.coachName}>Tu Cuenta</Text>
       <Text style={styles.coachMsg}>{email}</Text>
@@ -305,4 +380,26 @@ const styles = StyleSheet.create({
   expandedContainer: { backgroundColor: '#FFF', borderRadius: 28, marginTop: 12, overflow: 'hidden' },
   calendarFull: { padding: 20 },
   monthTitle: { fontSize: 18, fontWeight: '900', color: '#2f3542', textAlign: 'center' },
+  // Nuevos estilos Nav
+  navHandle: { 
+    position: 'absolute', 
+    bottom: 20, 
+    alignSelf: 'center', 
+    backgroundColor: '#FFF', 
+    width: 60, 
+    height: 36, 
+    borderRadius: 18, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    borderWidth: 1, 
+    borderColor: '#eee',
+    zIndex: 100
+  },
+  miniButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center'
+  }
 });

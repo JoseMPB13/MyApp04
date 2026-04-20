@@ -1,141 +1,292 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
   Dimensions,
-  Animated,
   Platform,
+  ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { VaultService } from '../../api/vault';
+import { AITutorService } from '../../api/ai_tutor';
 
 const { width } = Dimensions.get('window');
 
 interface WordPair {
-  id: string;
-  word: string;
-  translation: string;
+  id: string; // The database id, or index if fallback
+  word: string; // Spanish
+  translation: string; // English
   matchId: number;
+  inVault?: boolean;
 }
 
 interface Card {
-  id: string;
+  id: string; // unique card id e.g. "es-1"
   content: string;
   matchId: number;
   type: 'es' | 'en';
 }
 
-const WORDS: WordPair[] = [
-  { id: '1', word: 'Manzana', translation: 'Apple', matchId: 1 },
-  { id: '2', word: 'Pan', translation: 'Bread', matchId: 2 },
-  { id: '3', word: 'Agua', translation: 'Water', matchId: 3 },
-  { id: '4', word: 'Hola', translation: 'Hello', matchId: 4 },
-  { id: '5', word: 'Adiós', translation: 'Goodbye', matchId: 5 },
-  { id: '6', word: 'Pasaporte', translation: 'Passport', matchId: 6 },
-];
+export default function WordMatcher({ 
+  words = [], 
+  userId,
+  onComplete 
+}: { 
+  words: WordPair[], 
+  userId: string,
+  onComplete: (matchedWords: WordPair[]) => void 
+}) {
+  const [esCards, setEsCards] = useState<Card[]>([]);
+  const [enCards, setEnCards] = useState<Card[]>([]);
+  
+  const [selectedEs, setSelectedEs] = useState<Card | null>(null);
+  const [selectedEn, setSelectedEn] = useState<Card | null>(null);
+  
+  const [matchedIds, setMatchedIds] = useState<number[]>([]);
+  const [wrongEs, setWrongEs] = useState<Card | null>(null);
+  const [wrongEn, setWrongEn] = useState<Card | null>(null);
 
-export default function WordMatcher({ onComplete }: { onComplete: () => void }) {
-  const [cards, setCards] = useState<Card[]>([]);
-  const [selected, setSelected] = useState<number[]>([]);
-  const [matched, setMatched] = useState<number[]>([]);
-  const [wrong, setWrong] = useState<number[]>([]);
+  const [showSummary, setShowSummary] = useState(false);
+  const [savedWords, setSavedWords] = useState<string[]>([]);
+  const [savingId, setSavingId] = useState<string | null>(null);
 
+  // Initialize
   useEffect(() => {
-    // Preparar cartas mezcladas
-    const list: Card[] = [];
-    WORDS.forEach(p => {
-      list.push({ id: `es-${p.id}`, content: p.word, matchId: p.matchId, type: 'es' });
-      list.push({ id: `en-${p.id}`, content: p.translation, matchId: p.matchId, type: 'en' });
+    if (words.length === 0) return;
+
+    const esList: Card[] = [];
+    const enList: Card[] = [];
+    const alreadySaved: string[] = [];
+    
+    words.forEach(p => {
+      esList.push({ id: `es-${p.matchId}`, content: p.word, matchId: p.matchId, type: 'es' });
+      enList.push({ id: `en-${p.matchId}`, content: p.translation, matchId: p.matchId, type: 'en' });
+      if (p.inVault) {
+        alreadySaved.push(p.id);
+      }
     });
-    setCards(list.sort(() => Math.random() - 0.5));
-  }, []);
+    
+    setEsCards(esList.sort(() => Math.random() - 0.5));
+    setEnCards(enList.sort(() => Math.random() - 0.5));
+    setSavedWords(alreadySaved);
+  }, [words]);
 
-  const handleSelect = (index: number) => {
-    if (matched.includes(index) || selected.includes(index) || selected.length >= 2) return;
-
-    const newSelected = [...selected, index];
-    setSelected(newSelected);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    if (newSelected.length === 2) {
-      const first = cards[newSelected[0]];
-      const second = cards[newSelected[1]];
-
-      if (first.matchId === second.matchId) {
+  // Main Matching Logic
+  useEffect(() => {
+    if (selectedEs && selectedEn) {
+      if (selectedEs.matchId === selectedEn.matchId) {
         // MATCH!
+        const mId = selectedEs.matchId;
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
         setTimeout(() => {
-          setMatched(prev => [...prev, ...newSelected]);
-          setSelected([]);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          
-          if (matched.length + 2 === cards.length) {
-            onComplete();
-          }
-        }, 500);
+          setMatchedIds(prev => {
+            const next = [...prev, mId];
+            if (next.length === words.length && words.length > 0) {
+              setTimeout(() => setShowSummary(true), 600);
+            }
+            return next;
+          });
+          setSelectedEs(null);
+          setSelectedEn(null);
+        }, 300);
+        
       } else {
         // ERROR
-        setWrong(newSelected);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        const wEs = selectedEs;
+        const wEn = selectedEn;
+        setWrongEs(wEs);
+        setWrongEn(wEn);
+        setSelectedEs(null);
+        setSelectedEn(null);
+        
         setTimeout(() => {
-          setSelected([]);
-          setWrong([]);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        }, 1000);
+          setWrongEs(null);
+          setWrongEn(null);
+        }, 800);
       }
+    }
+  }, [selectedEs, selectedEn, words.length]);
+
+  const handleSelect = (card: Card) => {
+    // If it's already matched, or wait state is active
+    if (matchedIds.includes(card.matchId) || (wrongEs !== null)) return;
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    if (card.type === 'es') {
+      // Toggle off if same
+      if (selectedEs?.id === card.id) setSelectedEs(null);
+      else setSelectedEs(card);
+    } else {
+      if (selectedEn?.id === card.id) setSelectedEn(null);
+      else setSelectedEn(card);
     }
   };
 
+  const handleSaveToVault = async (pair: WordPair) => {
+    if (savedWords.includes(pair.id) || savingId !== null) return;
+    
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSavingId(pair.id);
+
+    try {
+      // Auto classify
+      const generatedCategory = await AITutorService.categorizeVaultWord(pair.translation, pair.word);
+      
+      const newWord = {
+        user_id: userId,
+        word_en: pair.translation,
+        word_es: pair.word,
+        category: generatedCategory,
+        status: 'learning' as const
+      };
+
+      const res = await VaultService.addVaultItem(newWord);
+      
+      if (res.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setSavedWords(prev => [...prev, pair.id]);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    } catch (e) {
+      console.error("Error saving word", e);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const renderCard = (card: Card) => {
+    const isEs = card.type === 'es';
+    const isSelected = isEs ? selectedEs?.id === card.id : selectedEn?.id === card.id;
+    const isWrong = isEs ? wrongEs?.id === card.id : wrongEn?.id === card.id;
+    const isMatched = matchedIds.includes(card.matchId);
+
+    return (
+      <TouchableOpacity
+        key={card.id}
+        onPress={() => handleSelect(card)}
+        disabled={isMatched}
+        style={[
+          styles.card,
+          isSelected && styles.cardSelected,
+          isMatched && styles.cardMatched,
+          isWrong && styles.cardWrong
+        ]}
+      >
+        <Text style={[
+          styles.cardText, 
+          isSelected && styles.cardTextActive,
+          isMatched && styles.cardTextMatched,
+          isWrong && styles.cardTextWrong
+        ]}>
+          {card.content}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  if (showSummary) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.titleSuccess}>¡Nivel Completado! 🎉</Text>
+        <Text style={styles.subtitle}>Has emparejado las 5 palabras. Guárdalas en tu baúl para no olvidarlas.</Text>
+        
+        <ScrollView style={{ width: '100%', marginTop: 10 }}>
+          {words.map(w => {
+            const isSaved = savedWords.includes(w.id);
+            const isSavingThis = savingId === w.id;
+
+            return (
+              <View key={w.id} style={[styles.summaryRow, styles.cardShadow]}>
+                <View style={styles.summaryInfo}>
+                  <Text style={styles.summaryWordEs}>{w.word}</Text>
+                  <Text style={styles.summaryWordEn}>{w.translation}</Text>
+                </View>
+                <TouchableOpacity 
+                  onPress={() => handleSaveToVault(w)} 
+                  style={[styles.saveBtn, isSaved && styles.savedBtn]}
+                  disabled={isSaved || isSavingThis}
+                >
+                  {isSavingThis ? (
+                    <ActivityIndicator color="#575fcf" size="small" />
+                  ) : (
+                    <Ionicons 
+                      name={isSaved ? "bookmark" : "bookmark-outline"} 
+                      size={24} 
+                      color={isSaved ? "#FFF" : "#575fcf"} 
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </ScrollView>
+
+        <TouchableOpacity 
+          style={[styles.primaryBtn, styles.cardShadow]} 
+          onPress={() => onComplete(words)}
+        >
+          <Text style={styles.primaryBtnText}>Continuar</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // GAME RENDER
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Empareja las palabras</Text>
-      <View style={styles.grid}>
-        {cards.map((card, index) => {
-          const isSelected = selected.includes(index);
-          const isMatched = matched.includes(index);
-          const isWrong = wrong.includes(index);
+      
+      <View style={styles.columnsContainer}>
+        {/* Spanish Column */}
+        <View style={styles.column}>
+          {esCards.map(c => renderCard(c))}
+        </View>
 
-          return (
-            <TouchableOpacity
-              key={card.id}
-              onPress={() => handleSelect(index)}
-              disabled={isMatched}
-              style={[
-                styles.card,
-                isSelected && styles.cardSelected,
-                isMatched && styles.cardMatched,
-                isWrong && styles.cardWrong
-              ]}
-            >
-              <Text style={[
-                styles.cardText, 
-                isSelected && styles.cardTextActive,
-                isMatched && styles.cardTextMatched
-              ]}>
-                {card.content}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+        {/* English Column */}
+        <View style={styles.column}>
+          {enCards.map(c => renderCard(c))}
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 10, alignItems: 'center' },
-  title: { fontSize: 20, fontWeight: '900', color: '#2f3542', marginBottom: 20 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
+  container: { flex: 1, padding: 16, alignItems: 'center' },
+  title: { fontSize: 24, fontWeight: '900', color: '#1e272e', marginBottom: 20 },
+  titleSuccess: { fontSize: 26, fontWeight: '900', color: '#05c46b', marginBottom: 8, marginTop: 20 },
+  subtitle: { fontSize: 16, color: '#7f8c8d', marginBottom: 20, textAlign: 'center', paddingHorizontal: 10 },
+  
+  columnsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  column: {
+    flex: 1,
+    paddingHorizontal: 8,
+  },
+  
   card: {
-    width: (width - 60) / 2,
-    height: 80,
+    width: '100%',
+    minHeight: 64,
     backgroundColor: '#FFF',
     borderRadius: 16,
-    margin: 6,
+    marginBottom: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 12,
     borderWidth: 2,
-    borderColor: '#F1F2F6',
+    borderColor: '#eef1ff',
     borderBottomWidth: 4,
     ...Platform.select({
       ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
@@ -143,10 +294,60 @@ const styles = StyleSheet.create({
       web: { boxShadow: '0px 2px 4px rgba(0,0,0,0.1)' }
     })
   },
-  cardSelected: { borderColor: '#575fcf', backgroundColor: '#f0f1ff' },
-  cardMatched: { borderColor: '#05c46b', backgroundColor: '#e9fbee', borderBottomWidth: 2 },
+  cardSelected: { borderColor: '#575fcf', backgroundColor: '#f8f9ff', opacity: 1 },
+  // Animamos 'haciendo invisible' cuando se completan
+  cardMatched: { borderColor: '#05c46b', backgroundColor: '#ebfdf2', opacity: 0.4, borderBottomWidth: 2 },
   cardWrong: { borderColor: '#ff4757', backgroundColor: '#fff2f2' },
-  cardText: { fontSize: 16, fontWeight: '800', color: '#57606f', textAlign: 'center' },
+  
+  cardText: { fontSize: 15, fontWeight: '800', color: '#2d3436', textAlign: 'center' },
   cardTextActive: { color: '#575fcf' },
   cardTextMatched: { color: '#05c46b' },
+  cardTextWrong: { color: '#ff4757' },
+
+  // Summary Styles
+  summaryRow: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#F1F2F6',
+    borderBottomWidth: 4,
+  },
+  summaryInfo: { flex: 1 },
+  summaryWordEs: { fontSize: 18, fontWeight: '900', color: '#1e272e' },
+  summaryWordEn: { fontSize: 15, color: '#575fcf', fontWeight: '700', marginTop: 2 },
+  saveBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#f8f9ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  savedBtn: {
+    backgroundColor: '#05c46b',
+  },
+  primaryBtn: {
+    backgroundColor: '#575fcf',
+    paddingHorizontal: 24,
+    paddingVertical: 18,
+    borderRadius: 20,
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 40,
+  },
+  primaryBtnText: { color: '#FFF', fontSize: 18, fontWeight: '900' },
+  
+  cardShadow: {
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
+      android: { elevation: 4 },
+      web: { boxShadow: '0px 4px 8px rgba(0,0,0,0.1)' }
+    })
+  },
 });

@@ -13,10 +13,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { VaultService, VaultWord } from '../api/vault';
+import { AITutorService } from '../api/ai_tutor';
 import { useTranslation } from '../hooks/useTranslation';
-
-// Inyectado vía props desde la sesión de Supabase
-const CATEGORIES = ['General', 'Vocabulario', 'Viajes', 'Negocios', 'Frases'];
 
 interface VaultSectionProps {
   userId: string;
@@ -30,7 +28,6 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
   // States for new word form
   const [wordEn, setWordEn] = useState('');
   const [wordEs, setWordEs] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0]);
   const [saving, setSaving] = useState(false);
   
   // AI Translation Hook
@@ -95,11 +92,13 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
     }
 
     setSaving(true);
+    const generatedCategory = await AITutorService.categorizeVaultWord(wordEn.trim(), wordEs.trim());
+    
     const newWord: VaultWord = {
       user_id: userId,
       word_en: wordEn.trim(),
       word_es: wordEs.trim(),
-      category: category,
+      category: generatedCategory,
       status: 'learning'
     };
 
@@ -214,29 +213,7 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
               </View>
             </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Categoría</Text>
-              <View style={styles.categoryPicker}>
-                {CATEGORIES.map((cat) => (
-                  <TouchableOpacity 
-                    key={cat}
-                    onPress={() => {
-                      setCategory(cat);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                    style={[
-                      styles.categoryChip,
-                      category === cat && styles.categoryChipActive
-                    ]}
-                  >
-                    <Text style={[
-                      styles.categoryText,
-                      category === cat && styles.categoryTextActive
-                    ]}>{cat}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
+            {/* Removed manual category picker */}
 
             <TouchableOpacity 
               style={[
@@ -273,28 +250,39 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
                 <Text style={styles.emptyText}>Tu baúl está esperando tus primeras palabras.</Text>
               </View>
             ) : (
-              words.map((w) => (
-                <View 
-                  key={w.id} 
-                  style={[styles.wordCard, styles.cardShadow3D]}
-                >
-                  <View style={styles.wordInfo}>
-                    <Text style={styles.wordEs}>{w.word_es}</Text>
-                    <View style={styles.wordEnRow}>
-                       <Ionicons name="volume-medium-outline" size={16} color="#575fcf" style={{ marginRight: 4 }} />
-                       <Text style={styles.wordEn}>{w.word_en}</Text>
+              Object.entries(
+                words.reduce((acc, word) => {
+                  const cat = word.category || 'General';
+                  if (!acc[cat]) acc[cat] = [];
+                  acc[cat].push(word);
+                  return acc;
+                }, {} as Record<string, VaultWord[]>)
+              ).map(([cat, catWords]) => (
+                <View key={cat} style={styles.categorySection}>
+                  <Text style={styles.categoryHeader}>{cat}</Text>
+                  {catWords.map((w) => (
+                    <View 
+                      key={w.id} 
+                      style={[styles.wordCard, styles.cardShadow3D]}
+                    >
+                      <View style={styles.wordInfo}>
+                        <Text style={styles.wordEs}>{w.word_es}</Text>
+                        <View style={styles.wordEnRow}>
+                           <Text style={styles.wordEn}>{w.word_en}</Text>
+                        </View>
+                        <View style={styles.categoryTag}>
+                           <Text style={styles.categoryTagText}>{w.category || 'General'}</Text>
+                        </View>
+                      </View>
+                      
+                      <TouchableOpacity 
+                        onPress={() => w.id && handleDelete(w.id)}
+                        style={styles.deleteBtn}
+                      >
+                        <Ionicons name="trash-outline" size={20} color="#FF4757" />
+                      </TouchableOpacity>
                     </View>
-                    <View style={styles.categoryTag}>
-                       <Text style={styles.categoryTagText}>{w.category || 'General'}</Text>
-                    </View>
-                  </View>
-                  
-                  <TouchableOpacity 
-                    onPress={() => w.id && handleDelete(w.id)}
-                    style={styles.deleteBtn}
-                  >
-                    <Ionicons name="trash-outline" size={20} color="#FF4757" />
-                  </TouchableOpacity>
+                  ))}
                 </View>
               ))
             )}
@@ -344,10 +332,12 @@ const styles = StyleSheet.create({
   saveButtonDisabled: { backgroundColor: '#a4b0be', borderColor: '#747d8c', opacity: 0.7 },
   saveButtonText: { color: '#FFF', fontSize: 16, fontWeight: '900' },
 
-  // List
+  // List & Grouping
   listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   listTitle: { fontSize: 18, fontWeight: '900', color: '#2d3436' },
   wordList: { marginTop: 4 },
+  categorySection: { marginBottom: 20 },
+  categoryHeader: { fontSize: 18, fontWeight: '900', color: '#575fcf', marginBottom: 12, marginLeft: 4 },
   wordCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 18, marginBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderColor: '#F1F2F6', borderWidth: 1, borderBottomWidth: 5 },
   wordInfo: { flex: 1 },
   wordEs: { fontSize: 18, fontWeight: '900', color: '#2d3436' },
