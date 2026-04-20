@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -20,7 +20,6 @@ import AuthSection from '../src/screens/AuthSection';
 import { MissionsService, StreakData } from '../src/api/missions';
 import ActividadesSection from '../src/screens/ActividadesSection';
 import VaultSection from '../src/screens/VaultSection';
-import { VaultService } from '../src/api/vault';
 import { AITutorService } from '../src/api/ai_tutor';
 import { useAppTheme } from '../src/context/ThemeContext';
 
@@ -59,19 +58,7 @@ const isCompleted = (date: Date, streak: StreakData | null) => {
 };
 
 // --- Componentes compartidos ---
-const TabIcon = ({ name, active }: { name: string; active: boolean }) => {
-  let iconName: any = 'home';
-  if (name === 'inicio') iconName = active ? 'home' : 'home-outline';
-  if (name === 'activities') iconName = active ? 'compass' : 'compass-outline';
-  if (name === 'vault') iconName = active ? 'archive' : 'archive-outline';
-  if (name === 'settings') iconName = active ? 'settings' : 'settings-outline';
 
-  return (
-    <View style={styles.iconContainer}>
-      <Ionicons name={iconName} size={26} color={active ? '#575fcf' : '#d2dae2'} />
-    </View>
-  );
-};
 
 // --- SECCIÓN 1: INICIO ---
 const InicioSection = ({ streak, user }: { streak: StreakData | null, user: any }) => {
@@ -257,14 +244,20 @@ export default function HomeScreen() {
     setIsNavVisible(!active);
   };
 
-  const fetchFullProfile = async (user: any) => {
+  const fetchFullProfile = useCallback(async (user: any) => {
     await AuthService.ensureProfile(user.id, user.email || '');
     const profile = await AuthService.getProfile(user.id);
     if (profile?.username) {
       updateUsername(profile.username);
     }
     return { ...user, user_metadata: { ...user.user_metadata, username: profile?.username } };
-  };
+  }, [updateUsername]);
+
+  const loadGlobalData = useCallback(async () => {
+    if (!session?.user?.id) return;
+    const data = await MissionsService.getStreak(session.user.id);
+    setStreak(data);
+  }, [session?.user?.id]);
 
   useEffect(() => {
     AuthService.getCurrentUser().then(async (user) => {
@@ -289,19 +282,11 @@ export default function HomeScreen() {
     return () => {
       if (authListener) authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchFullProfile]);
 
   useEffect(() => {
-    if (session?.user?.id) {
-      loadGlobalData();
-    }
-  }, [session]);
-
-  const loadGlobalData = async () => {
-    if (!session?.user?.id) return;
-    const data = await MissionsService.getStreak(session.user.id);
-    setStreak(data);
-  };
+    loadGlobalData();
+  }, [loadGlobalData]);
 
 
 

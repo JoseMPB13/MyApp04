@@ -4,7 +4,6 @@ import {
   Text,
   View,
   TouchableOpacity,
-  Dimensions,
   Platform,
   ScrollView,
   ActivityIndicator,
@@ -15,7 +14,7 @@ import { VaultService } from '../../api/vault';
 import { AITutorService } from '../../api/ai_tutor';
 import { useAppTheme } from '../../context/ThemeContext';
 
-const { width } = Dimensions.get('window');
+
 
 interface WordPair {
   id: string; // The database id, or index if fallback
