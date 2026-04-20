@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Platform,
   Animated,
+  Switch,
+  TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +21,8 @@ import { MissionsService, StreakData } from '../src/api/missions';
 import ActividadesSection from '../src/screens/ActividadesSection';
 import VaultSection from '../src/screens/VaultSection';
 import { VaultService } from '../src/api/vault';
+import { AITutorService } from '../src/api/ai_tutor';
+import { useAppTheme } from '../src/context/ThemeContext';
 
 // El USER_ID ahora se obtiene dinámicamente de la sesión de Supabase
 
@@ -38,6 +42,22 @@ const getGreeting = () => {
   return '¡Buenas noches';
 };
 
+const isCompleted = (date: Date, streak: StreakData | null) => {
+  if (!streak || !streak.last_completion_date || streak.current_streak === 0) return false;
+  // Parse last date 
+  const [year, month, day] = streak.last_completion_date.split('-').map(Number);
+  const lastDate = new Date(year, month - 1, day);
+  // Normalize target date to start of day
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  
+  if (target > lastDate) return false;
+  
+  const diffTime = lastDate.getTime() - target.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays >= 0 && diffDays < streak.current_streak;
+};
+
 // --- Componentes compartidos ---
 const TabIcon = ({ name, active }: { name: string; active: boolean }) => {
   let iconName: any = 'home';
@@ -54,10 +74,21 @@ const TabIcon = ({ name, active }: { name: string; active: boolean }) => {
 };
 
 // --- SECCIÓN 1: INICIO ---
-const InicioSection = ({ streak }: { streak: StreakData | null }) => {
+const InicioSection = ({ streak, user }: { streak: StreakData | null, user: any }) => {
+  const { colors, username } = useAppTheme();
   const [isExpanded, setIsExpanded] = useState(false);
   const [viewDate] = useState(new Date());
   const expandAnim = useRef(new Animated.Value(0)).current;
+  
+  const [dailyTip, setDailyTip] = useState<{english: string, spanish: string} | null>(null);
+  const [loadingTip, setLoadingTip] = useState(true);
+
+  useEffect(() => {
+    AITutorService.getDailyTip().then(tip => {
+      setDailyTip(tip);
+      setLoadingTip(false);
+    });
+  }, []);
 
   const toggleExpand = () => {
     Animated.spring(expandAnim, {
@@ -68,9 +99,13 @@ const InicioSection = ({ streak }: { streak: StreakData | null }) => {
     setIsExpanded(!isExpanded);
   };
 
+  const displayName = username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'Amigo';
+
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sectionPadding}>
-      <Text style={styles.greetingText}>{getGreeting()}, Robert! 👋</Text>
+      <Text style={[styles.greetingText, { color: colors.text }]}>
+        {getGreeting()}, <Text style={{ color: colors.accent }}>{displayName}</Text>! 👋
+      </Text>
       
       <View style={styles.cardShadow}>
         <TouchableOpacity activeOpacity={0.9} onPress={toggleExpand} style={styles.streakPanel}>
@@ -86,14 +121,21 @@ const InicioSection = ({ streak }: { streak: StreakData | null }) => {
             </View>
 
             <View style={styles.weeklyRow}>
-              {DAYS_NAMES.map((d, i) => (
-                <View key={i} style={styles.weekDay}>
-                  <Text style={styles.weekDayLabel}>{d}</Text>
-                  <View style={[styles.weekDayCircle, i < 5 ? styles.doneDay : styles.pendingDay]}>
-                    {i < 5 ? <Ionicons name="checkmark" size={16} color="#FFF" /> : <View style={styles.emptyDot} />}
+              {Array.from({ length: 7 }).map((_, i) => {
+                const d = new Date();
+                d.setDate(d.getDate() - (6 - i));
+                const dayLabel = DAYS_NAMES[d.getDay()];
+                const isDone = isCompleted(d, streak);
+                
+                return (
+                  <View key={i} style={styles.weekDay}>
+                    <Text style={styles.weekDayLabel}>{dayLabel}</Text>
+                    <View style={[styles.weekDayCircle, isDone ? styles.doneDay : styles.pendingDay]}>
+                      {isDone ? <Ionicons name="checkmark" size={16} color="#FFF" /> : <View style={styles.emptyDot} />}
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
             <View style={styles.expandHint}>
               <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color="#FFF" style={{ marginRight: 6 }} />
@@ -103,25 +145,71 @@ const InicioSection = ({ streak }: { streak: StreakData | null }) => {
         </TouchableOpacity>
       </View>
 
-      <Animated.View style={[styles.expandedContainer, { height: expandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 360] }), opacity: expandAnim }]}>
+      <Animated.View style={[styles.expandedContainer, { backgroundColor: colors.card, height: expandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 360] }), opacity: expandAnim }]}>
         <View style={styles.calendarFull}>
-           <Text style={styles.monthTitle}>{MONTHS_NAMES[viewDate.getMonth()]} {viewDate.getFullYear()}</Text>
-           {/* Simplificado para el ejemplo, aquí iría el grid del calendario real */}
-           <View style={{ height: 200, alignItems: 'center', justifyContent: 'center' }}>
-             <Text style={{ color: '#A4B0BE' }}>Visualización de racha sincronizada</Text>
+           <Text style={[styles.monthTitle, { color: colors.text }]}>{MONTHS_NAMES[viewDate.getMonth()]} {viewDate.getFullYear()}</Text>
+           <View style={styles.calendarGrid}>
+             {(() => {
+               const year = viewDate.getFullYear();
+               const month = viewDate.getMonth();
+               const daysInMonth = new Date(year, month + 1, 0).getDate();
+               const firstDayIndex = new Date(year, month, 1).getDay(); // 0 represents Sunday
+               
+               const paddingDays = Array.from({ length: firstDayIndex }).map((_, i) => (
+                 <View key={`pad-${i}`} style={[styles.calendarDay, { backgroundColor: 'transparent' }]} />
+               ));
+               
+               const monthDays = Array.from({ length: daysInMonth }).map((_, i) => {
+                 const d = new Date(year, month, i + 1);
+                 const isDone = isCompleted(d, streak);
+                 const isToday = new Date().toDateString() === d.toDateString();
+                 
+                 return (
+                   <View key={i} style={[
+                     styles.calendarDay,
+                     { backgroundColor: colors.border },
+                     isDone ? styles.calendarDayDone : null,
+                     isToday && !isDone ? { borderWidth: 2, borderColor: colors.accent } : null
+                   ]}>
+                     <Text style={[styles.calendarDayText, { color: colors.text }, isDone ? { color: '#FFF' } : null]}>{i + 1}</Text>
+                   </View>
+                 );
+               });
+
+               const weekHeader = DAYS_NAMES.map((d, i) => (
+                 <View key={`hdr-${i}`} style={[styles.calendarDay, { backgroundColor: 'transparent', height: 20 }]}>
+                    <Text style={{ fontSize: 10, color: '#A4B0BE', fontWeight: 'bold' }}>{d}</Text>
+                 </View>
+               ));
+
+               return [
+                 ...weekHeader,
+                 ...paddingDays,
+                 ...monthDays
+               ];
+             })()}
            </View>
         </View>
       </Animated.View>
 
       <View style={styles.coachContext}>
-        <View style={[styles.raccoonAvatar, styles.cardShadow]}>
+        <View style={[styles.raccoonAvatar, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.accent }]}>
           <Text style={{ fontSize: 32 }}>🦝</Text>
         </View>
-        <View style={[styles.chatBubble, styles.cardShadow]}>
-          <Text style={styles.coachName}>Coach Raccoon</Text>
-          <Text style={styles.coachMsg}>
-            &quot;Tu progreso se está sincronizando con la nube. ¡Cada palabra cuenta!&quot;
-          </Text>
+        <View style={[styles.chatBubble, styles.cardShadow, { backgroundColor: colors.card }]}>
+          <Text style={[styles.coachName, { color: colors.accent }]}>Coach Raccoon</Text>
+          {loadingTip ? (
+            <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
+          ) : (
+            <>
+              <Text style={[styles.coachMsg, { fontWeight: 'bold', color: colors.text }]}>
+                &quot;{dailyTip?.english}&quot;
+              </Text>
+              <Text style={[styles.coachMsg, { marginTop: 4, fontSize: 13, color: colors.text, opacity: 0.8 }]}>
+                {dailyTip?.spanish}
+              </Text>
+            </>
+          )}
         </View>
       </View>
     </ScrollView>
@@ -130,6 +218,8 @@ const InicioSection = ({ streak }: { streak: StreakData | null }) => {
 
 // --- APP PRINCIPAL ---
 export default function HomeScreen() {
+  const { colors, isDarkMode, updateUsername } = useAppTheme();
+  
   const [activeTab, setActiveTab] = useState('inicio');
   const [streak, setStreak] = useState<StreakData | null>(null);
   const [session, setSession] = useState<any>(null);
@@ -137,6 +227,7 @@ export default function HomeScreen() {
   const [isNavVisible, setIsNavVisible] = useState(true);
   const navAnim = useRef(new Animated.Value(0)).current;
 
+  // ...
   const toggleNav = () => {
     const toValue = isNavVisible ? 130 : 0;
     Animated.spring(navAnim, {
@@ -159,25 +250,33 @@ export default function HomeScreen() {
     setIsNavVisible(!active);
   };
 
+  const fetchFullProfile = async (user: any) => {
+    await AuthService.ensureProfile(user.id, user.email || '');
+    const profile = await AuthService.getProfile(user.id);
+    if (profile?.username) {
+      updateUsername(profile.username);
+    }
+    return { ...user, user_metadata: { ...user.user_metadata, username: profile?.username } };
+  };
+
   useEffect(() => {
-    // 1. Obtener sesión inicial
     AuthService.getCurrentUser().then(async (user) => {
       if (user) {
-        // Asegurar que el perfil existe en la tabla profiles
-        await AuthService.ensureProfile(user.id, user.email || '');
-        setSession({ user });
+        const fullUser = await fetchFullProfile(user);
+        setSession({ user: fullUser });
       } else {
         setSession(null);
       }
       setInitializing(false);
     });
 
-    // 2. Escuchar cambios de sesión
     const { data: authListener } = AuthService.onAuthStateChange(async (newSession) => {
       if (newSession?.user) {
-        await AuthService.ensureProfile(newSession.user.id, newSession.user.email || '');
+        const fullUser = await fetchFullProfile(newSession.user);
+        setSession({ ...newSession, user: fullUser });
+      } else {
+        setSession(null);
       }
-      setSession(newSession);
     });
 
     return () => {
@@ -217,7 +316,7 @@ export default function HomeScreen() {
   };
 
   if (initializing) {
-    return <View style={styles.centered}><ActivityIndicator size="large" color="#575fcf" /></View>;
+    return <View style={[styles.centered, { backgroundColor: colors.background }]}><ActivityIndicator size="large" color={colors.accent} /></View>;
   }
 
   if (!session) {
@@ -225,11 +324,11 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} />
       
       <View style={styles.mainContent}>
-        {activeTab === 'inicio' && <InicioSection streak={streak} />}
+        {activeTab === 'inicio' && <InicioSection streak={streak} user={session.user} />}
         {activeTab === 'activities' && (
           <ActividadesSection 
             userId={session.user.id} 
@@ -240,10 +339,9 @@ export default function HomeScreen() {
         {activeTab === 'vault' && <VaultSection userId={session.user.id} />}
         {activeTab === 'settings' && (
           <SettingsScreen 
-            email={session.user.email} 
+            user={session.user}
             onLogout={() => AuthService.signOut()} 
-            onToggleNav={toggleNav}
-            navHidden={!isNavVisible}
+            onProfileUpdate={(newSessionUser: any) => setSession({ ...session, user: newSessionUser })}
           />
         )}
       </View>
@@ -252,23 +350,30 @@ export default function HomeScreen() {
         style={[
           styles.navHandle, 
           styles.cardShadow, 
-          { bottom: isNavVisible ? 120 : 20 }
+          { bottom: isNavVisible ? 120 : 20, backgroundColor: colors.card, borderColor: colors.border }
         ]} 
         onPress={toggleNav}
       >
         <Ionicons 
           name={isNavVisible ? "chevron-down" : "chevron-up"} 
           size={20} 
-          color="#575fcf" 
+          color={colors.accent} 
         />
       </TouchableOpacity>
 
       <Animated.View style={[styles.navContainer, { transform: [{ translateY: navAnim }] }]}>
-        <View style={[styles.navBar, styles.cardShadow]}>
+        <View style={[styles.navBar, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {['inicio', 'activities', 'vault', 'settings'].map((tab) => (
             <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={styles.navItem} activeOpacity={0.6}>
-              <TabIcon name={tab} active={activeTab === tab} />
-              <Text style={[styles.navText, activeTab === tab ? styles.navTextActive : null]}>
+              <View style={styles.iconContainer}>
+                 <Ionicons name={
+                    tab === 'inicio' ? (activeTab === tab ? 'home' : 'home-outline') :
+                    tab === 'activities' ? (activeTab === tab ? 'compass' : 'compass-outline') :
+                    tab === 'vault' ? (activeTab === tab ? 'archive' : 'archive-outline') :
+                    (activeTab === tab ? 'settings' : 'settings-outline')
+                 } size={26} color={activeTab === tab ? colors.accent : '#CBD5E0'} />
+              </View>
+              <Text style={[styles.navText, activeTab === tab ? { color: colors.accent } : null]}>
                 {tab === 'inicio' ? 'Inicio' : tab === 'activities' ? 'Misiones' : tab === 'vault' ? 'Baúl' : 'Ajustes'}
               </Text>
             </TouchableOpacity>
@@ -279,34 +384,72 @@ export default function HomeScreen() {
   );
 }
 
-const SettingsScreen = ({ email, onLogout, onToggleNav, navHidden }: any) => (
-  <View style={styles.sectionPadding}>
-    <Text style={styles.sectionTitle}>Ajustes</Text>
-    
-    <View style={[styles.chatBubble, styles.cardShadow, { marginBottom: 16, borderRadius: 20 }]}>
-      <Text style={styles.coachName}>Modo Inmersivo</Text>
-      <Text style={styles.coachMsg}>Usa este botón para ocultar o mostrar la barra de navegación.</Text>
-      <TouchableOpacity 
-        style={[styles.miniButton, { marginTop: 12, backgroundColor: navHidden ? '#575fcf' : '#d2dae2' }]} 
-        onPress={onToggleNav}
-      >
-        <Text style={{ color: '#FFF', fontWeight: '900' }}>{navHidden ? 'Mostrar Barra' : 'Ocultar Barra'}</Text>
-      </TouchableOpacity>
-    </View>
+const SettingsScreen = ({ user, onLogout, onProfileUpdate }: any) => {
+  const { colors, isDarkMode, toggleTheme, updateUsername } = useAppTheme();
+  const [nameInput, setNameInput] = useState(user?.user_metadata?.username || '');
+  const [saving, setSaving] = useState(false);
 
-    <View style={[styles.chatBubble, styles.cardShadow, { marginBottom: 24, borderRadius: 20 }]}>
-      <Text style={styles.coachName}>Tu Cuenta</Text>
-      <Text style={styles.coachMsg}>{email}</Text>
-    </View>
-    
-    <TouchableOpacity 
-      style={[styles.authButton, styles.logoutButton]} 
-      onPress={onLogout}
-    >
-      <Text style={styles.authButtonText}>Cerrar Sesión</Text>
-    </TouchableOpacity>
-  </View>
-);
+  const handleUpdateName = async () => {
+    if (!nameInput.trim() || nameInput === user?.user_metadata?.username) return;
+    setSaving(true);
+    try {
+      await AuthService.updateProfileUsername(user.id, nameInput.trim());
+      updateUsername(nameInput.trim()); // Actualización instantánea global
+      onProfileUpdate({
+        ...user,
+        user_metadata: { ...user.user_metadata, username: nameInput.trim() }
+      });
+    } catch (e) {
+      console.error(e);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20, paddingBottom: 150 }}>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>Ajustes</Text>
+      
+      <View style={[styles.chatBubble, styles.cardShadow, { marginBottom: 16, borderRadius: 20, backgroundColor: colors.card }]}>
+        <Text style={[styles.coachName, { color: colors.text, opacity: 0.7, fontSize: 13, marginBottom: 10 }]}>TU CUENTA: {user?.email}</Text>
+        
+        <Text style={[styles.coachName, { color: colors.text, fontSize: 15 }]}>Nombre de Usuario</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.border, color: colors.text }]}
+          value={nameInput}
+          onChangeText={setNameInput}
+          placeholder="Escribe tu nombre..."
+          placeholderTextColor="#95a5a6"
+        />
+        <TouchableOpacity 
+          style={[styles.authButton, { marginTop: 16, width: '100%' }]} 
+          onPress={handleUpdateName}
+          disabled={saving}
+        >
+          {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.authButtonText}>Guardar Perfil</Text>}
+        </TouchableOpacity>
+      </View>
+
+      <View style={[styles.chatBubble, styles.cardShadow, { marginBottom: 24, borderRadius: 20, backgroundColor: colors.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+        <View>
+          <Text style={[styles.coachName, { color: colors.text, fontSize: 15, marginBottom: 2 }]}>Modo Oscuro</Text>
+          <Text style={[styles.coachMsg, { color: colors.text, opacity: 0.6, fontSize: 13 }]}>Aplica el tema nocturno</Text>
+        </View>
+        <Switch 
+          value={isDarkMode} 
+          onValueChange={toggleTheme}
+          trackColor={{ false: "#d2dae2", true: colors.accent }}
+        />
+      </View>
+      
+      <TouchableOpacity 
+        style={[styles.authButton, styles.logoutButton]} 
+        onPress={onLogout}
+      >
+        <Text style={styles.authButtonText}>Cerrar Sesión</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F0F2F5' },
@@ -380,26 +523,35 @@ const styles = StyleSheet.create({
   expandedContainer: { backgroundColor: '#FFF', borderRadius: 28, marginTop: 12, overflow: 'hidden' },
   calendarFull: { padding: 20 },
   monthTitle: { fontSize: 18, fontWeight: '900', color: '#2f3542', textAlign: 'center' },
+  calendarGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 16, justifyContent: 'flex-start' },
+  calendarDay: { width: '13%', aspectRatio: 1, margin: '0.6%', alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#f1f2f6' },
+  calendarDayDone: { backgroundColor: '#05c46b' },
+  calendarDayToday: { borderWidth: 2, borderColor: '#575fcf' },
+  calendarDayText: { fontSize: 13, fontWeight: '700', color: '#2f3542' },
   // Nuevos estilos Nav
   navHandle: { 
     position: 'absolute', 
-    bottom: 20, 
     alignSelf: 'center', 
-    backgroundColor: '#FFF', 
     width: 60, 
     height: 36, 
     borderRadius: 18, 
     alignItems: 'center', 
     justifyContent: 'center', 
     borderWidth: 1, 
-    borderColor: '#eee',
     zIndex: 100
   },
   miniButton: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center'
+  },
+  input: {
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 8
   }
 });

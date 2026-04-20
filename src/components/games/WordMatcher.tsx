@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { VaultService } from '../../api/vault';
 import { AITutorService } from '../../api/ai_tutor';
+import { useAppTheme } from '../../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
@@ -40,6 +41,7 @@ export default function WordMatcher({
   userId: string,
   onComplete: (matchedWords: WordPair[]) => void 
 }) {
+  const { colors, isDarkMode } = useAppTheme();
   const [esCards, setEsCards] = useState<Card[]>([]);
   const [enCards, setEnCards] = useState<Card[]>([]);
   
@@ -176,14 +178,16 @@ export default function WordMatcher({
         disabled={isMatched}
         style={[
           styles.card,
-          isSelected && styles.cardSelected,
-          isMatched && styles.cardMatched,
-          isWrong && styles.cardWrong
+          { backgroundColor: colors.card, borderColor: colors.border },
+          isSelected && [styles.cardSelected, { borderColor: colors.accent, backgroundColor: isDarkMode ? '#28285c' : '#f8f9ff' } ],
+          isMatched && [styles.cardMatched, isDarkMode && { backgroundColor: '#1c4a30' }],
+          isWrong && [styles.cardWrong, isDarkMode && { backgroundColor: '#4a1515' }]
         ]}
       >
         <Text style={[
           styles.cardText, 
-          isSelected && styles.cardTextActive,
+          { color: colors.text },
+          isSelected && [styles.cardTextActive, { color: colors.accent }],
           isMatched && styles.cardTextMatched,
           isWrong && styles.cardTextWrong
         ]}>
@@ -195,9 +199,9 @@ export default function WordMatcher({
 
   if (showSummary) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.titleSuccess}>¡Nivel Completado! 🎉</Text>
-        <Text style={styles.subtitle}>Has emparejado las 5 palabras. Guárdalas en tu baúl para no olvidarlas.</Text>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Text style={[styles.titleSuccess, isDarkMode && { color: '#2ed573' }]}>¡Nivel Completado! 🎉</Text>
+        <Text style={[styles.subtitle, { color: colors.text, opacity: 0.7 }]}>Has emparejado las 5 palabras. Guárdalas en tu baúl para no olvidarlas.</Text>
         
         <ScrollView style={{ width: '100%', marginTop: 10 }}>
           {words.map(w => {
@@ -205,10 +209,10 @@ export default function WordMatcher({
             const isSavingThis = savingId === w.id;
 
             return (
-              <View key={w.id} style={[styles.summaryRow, styles.cardShadow]}>
+              <View key={w.id} style={[styles.summaryRow, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.summaryInfo}>
-                  <Text style={styles.summaryWordEs}>{w.word}</Text>
-                  <Text style={styles.summaryWordEn}>{w.translation}</Text>
+                  <Text style={[styles.summaryWordEs, { color: colors.text }]}>{w.word}</Text>
+                  <Text style={[styles.summaryWordEn, { color: colors.accent }]}>{w.translation}</Text>
                 </View>
                 <TouchableOpacity 
                   onPress={() => handleSaveToVault(w)} 
@@ -221,7 +225,7 @@ export default function WordMatcher({
                     <Ionicons 
                       name={isSaved ? "bookmark" : "bookmark-outline"} 
                       size={24} 
-                      color={isSaved ? "#FFF" : "#575fcf"} 
+                      color={isSaved ? "#FFF" : colors.accent} 
                     />
                   )}
                 </TouchableOpacity>
@@ -231,7 +235,7 @@ export default function WordMatcher({
         </ScrollView>
 
         <TouchableOpacity 
-          style={[styles.primaryBtn, styles.cardShadow]} 
+          style={[styles.primaryBtn, styles.cardShadow, { backgroundColor: colors.accent }]} 
           onPress={() => onComplete(words)}
         >
           <Text style={styles.primaryBtnText}>Continuar</Text>
@@ -242,8 +246,8 @@ export default function WordMatcher({
 
   // GAME RENDER
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Empareja las palabras</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Text style={[styles.title, { color: colors.text }]}>Empareja las palabras</Text>
       
       <View style={styles.columnsContainer}>
         {/* Spanish Column */}

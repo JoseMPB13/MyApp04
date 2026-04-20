@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { AITutorService, FeedbackCapsule as FeedbackType } from '../api/ai_tutor';
 import { VaultService } from '../api/vault';
+import { useAppTheme } from '../context/ThemeContext';
 
 type Phase = 'SELECT_CATEGORY' | 'SELECT_TOPIC' | 'CHAT';
 
@@ -24,28 +25,32 @@ interface Message {
   feedback?: FeedbackType;
 }
 
-const FeedbackCapsule = ({ feedback }: { feedback: FeedbackType }) => (
-  <View style={styles.feedbackContainer}>
-    <View style={styles.feedbackHeader}>
-      <Ionicons name="bulb" size={20} color="#575fcf" />
-      <Text style={styles.feedbackHeaderText}>Análisis de la IA</Text>
+const FeedbackCapsule = ({ feedback }: { feedback: FeedbackType }) => {
+  const { colors, isDarkMode } = useAppTheme();
+  return (
+    <View style={[styles.feedbackContainer, { backgroundColor: isDarkMode ? '#281a3a' : '#f8f4ff', borderColor: isDarkMode ? '#4b2c6e' : '#efe5ff' }]}>
+      <View style={styles.feedbackHeader}>
+        <Ionicons name="bulb" size={20} color={colors.accent} />
+        <Text style={[styles.feedbackHeaderText, { color: colors.accent }]}>Análisis de la IA</Text>
+      </View>
+      <View style={styles.feedbackItem}>
+        <Text style={[styles.feedbackLabel, isDarkMode && { color: '#a29bfe' }]}>Gramática:</Text>
+        <Text style={[styles.feedbackValue, { color: colors.text }]}>{feedback.grammar}</Text>
+      </View>
+      <View style={styles.feedbackItem}>
+        <Text style={[styles.feedbackLabel, isDarkMode && { color: '#a29bfe' }]}>Vocabulario:</Text>
+        <Text style={[styles.feedbackValue, { color: colors.text }]}>{feedback.vocabulary}</Text>
+      </View>
+      <View style={styles.feedbackItem}>
+        <Text style={[styles.feedbackLabel, isDarkMode && { color: '#a29bfe' }]}>Naturalidad:</Text>
+        <Text style={[styles.feedbackValue, { color: colors.text }]}>{feedback.naturalness}</Text>
+      </View>
     </View>
-    <View style={styles.feedbackItem}>
-      <Text style={styles.feedbackLabel}>Gramática:</Text>
-      <Text style={styles.feedbackValue}>{feedback.grammar}</Text>
-    </View>
-    <View style={styles.feedbackItem}>
-      <Text style={styles.feedbackLabel}>Vocabulario:</Text>
-      <Text style={styles.feedbackValue}>{feedback.vocabulary}</Text>
-    </View>
-    <View style={styles.feedbackItem}>
-      <Text style={styles.feedbackLabel}>Naturalidad:</Text>
-      <Text style={styles.feedbackValue}>{feedback.naturalness}</Text>
-    </View>
-  </View>
-);
+  );
+};
 
 export default function AIScenario({ onComplete, userId }: { onComplete: () => void; userId: string }) {
+  const { colors, isDarkMode } = useAppTheme();
   const [phase, setPhase] = useState<Phase>('SELECT_CATEGORY');
   const [categories, setCategories] = useState<string[]>([]);
   const [topics, setTopics] = useState<string[]>([]);
@@ -166,17 +171,17 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
     if (phase === 'SELECT_CATEGORY') {
       return (
         <ScrollView contentContainerStyle={styles.selectionContainer}>
-          <Text style={styles.phaseTitle}>¿Qué quieres practicar hoy?</Text>
+          <Text style={[styles.phaseTitle, { color: colors.text }]}>¿Qué quieres practicar hoy?</Text>
           <Text style={styles.phaseSubtitle}>Basado en tu Baúl de vocabulario</Text>
           
           {categories.map((cat, i) => (
             <TouchableOpacity 
               key={i} 
-              style={[styles.bentoBtn, styles.cardShadow]} 
+              style={[styles.bentoBtn, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.border }]} 
               onPress={() => handleSelectCategory(cat)}
             >
-              <Text style={styles.bentoBtnText}>{cat}</Text>
-              <Ionicons name="chevron-forward" size={24} color="#575fcf" />
+              <Text style={[styles.bentoBtnText, { color: colors.accent }]}>{cat}</Text>
+              <Ionicons name="chevron-forward" size={24} color={colors.accent} />
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -186,16 +191,16 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
     if (phase === 'SELECT_TOPIC') {
       return (
         <ScrollView contentContainerStyle={styles.selectionContainer}>
-          <Text style={styles.phaseTitle}>Elige un Tema</Text>
+          <Text style={[styles.phaseTitle, { color: colors.text }]}>Elige un Tema</Text>
           <Text style={styles.phaseSubtitle}>Categoría: {selectedCategory}</Text>
           
           {topics.map((topic, i) => (
             <TouchableOpacity 
               key={i} 
-              style={[styles.bentoBtn, styles.cardShadow, { backgroundColor: '#F0F2F5', borderColor: '#FFF' }]} 
+              style={[styles.bentoBtn, styles.cardShadow, { backgroundColor: colors.background, borderColor: colors.card }]} 
               onPress={() => handleSelectTopic(topic)}
             >
-              <Text style={[styles.bentoBtnText, { color: '#2d3436' }]}>{topic}</Text>
+              <Text style={[styles.bentoBtnText, { color: colors.text }]}>{topic}</Text>
               <Ionicons name="play-circle" size={28} color="#05c46b" />
             </TouchableOpacity>
           ))}
@@ -209,10 +214,10 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
 
     // CHAT Phase
     return (
-      <View style={{ flex: 1 }}>
-        <View style={styles.progressHeader}>
-          <Text style={styles.progressText}>Turno {Math.min(turnCount, 5)} de 5</Text>
-          <View style={styles.progressBar}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <View style={[styles.progressHeader, { backgroundColor: colors.background }]}>
+          <Text style={[styles.progressText, { color: colors.accent }]}>Turno {Math.min(turnCount, 5)} de 5</Text>
+          <View style={[styles.progressBar, { backgroundColor: isDarkMode ? '#2c2c2c' : '#F0F2F5' }]}>
             <View style={[styles.progressFill, { width: `${(Math.min(turnCount, 5) / 5) * 100}%` }]} />
           </View>
         </View>
@@ -229,21 +234,21 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
               
               <View style={[
                 styles.bubble,
-                m.sender === 'user' ? styles.userBubble : styles.aiBubble
+                m.sender === 'user' ? [styles.userBubble, { backgroundColor: colors.accent }] : [styles.aiBubble, { backgroundColor: colors.card }]
               ]}>
-                <Text style={m.sender === 'user' ? styles.messageText : styles.aiMessageText}>
+                <Text style={m.sender === 'user' ? styles.messageText : [styles.aiMessageText, { color: colors.text }]}>
                   {m.text}
                 </Text>
                 
                 {m.sender === 'ai' && m.translation && (
-                  <View style={styles.translationContainer}>
+                  <View style={[styles.translationContainer, { borderTopColor: colors.border }]}>
                     <TouchableOpacity onPress={() => toggleTranslation(m.id)} style={styles.translateBtn}>
                       <Ionicons name="language" size={16} color="#95a5a6" />
                       <Text style={styles.translateBtnText}>Traducir</Text>
                     </TouchableOpacity>
                     
                     {visibleTranslations[m.id] && (
-                      <Text style={styles.translationText}>{m.translation}</Text>
+                      <Text style={[styles.translationText, { color: colors.text, opacity: 0.8 }]}>{m.translation}</Text>
                     )}
                   </View>
                 )}
@@ -268,10 +273,11 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
         </ScrollView>
 
         {turnCount <= 5 && (
-          <View style={styles.inputArea}>
+          <View style={[styles.inputArea, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
               placeholder="Escribe en inglés..."
+              placeholderTextColor="#95a5a6"
               value={inputText}
               onChangeText={setInputText}
               multiline
@@ -292,12 +298,12 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
 
   return (
     <KeyboardAvoidingView 
-      style={styles.container} 
+      style={[styles.container, { backgroundColor: colors.background }]} 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={110}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 110 : 80}
     >
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Tiny Lesson</Text>
+      <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Tiny Lesson</Text>
         <Text style={styles.headerSubtitle}>
           {phase === 'CHAT' ? `Tema: ${selectedTopic}` : 'Práctica Rápida'}
         </Text>

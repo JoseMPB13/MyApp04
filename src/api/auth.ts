@@ -10,12 +10,21 @@ export const AuthService = {
   /**
    * Registro de un nuevo usuario.
    */
-  async signUp(email: string, password: string) {
+  async signUp(email: string, password: string, username: string) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
     });
     if (error) throw error;
+    
+    // Once signed up, store the username inside their profile immediately
+    if (data.user) {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({ id: data.user.id, email, username }, { onConflict: 'id' });
+      if (profileError) console.error("Error creating initial profile", profileError);
+    }
+    
     return data;
   },
 
@@ -61,6 +70,35 @@ export const AuthService = {
     return user;
   },
 
+
+
+  /**
+   * Obtener perfil extra de un usuario
+   */
+  async getProfile(userId: string) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('username')
+      .eq('id', userId)
+      .maybeSingle();
+    
+    if (error) console.error('AuthService: error al obtener perfil:', error);
+    return data;
+  },
+
+  /**
+   * Actualizar username
+   */
+  async updateProfileUsername(userId: string, newName: string) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ username: newName })
+      .eq('id', userId);
+      
+    if (error) throw error;
+    return data;
+  },
+
   /**
    * Listener para cambios en el estado de autenticación.
    */
@@ -80,17 +118,27 @@ export const AuthService = {
     try {
       console.log(`AuthService: Sincronizando perfil para ${userId} (${email})`);
       
-      const { error } = await supabase
+      const { data: existing } = await supabase
         .from('profiles')
-        .upsert(
-          { id: userId, email },
-          { onConflict: 'id' }
-        );
+        .select('id, username')
+        .eq('id', userId)
+        .maybeSingle();
 
-      if (error) {
-        console.error('AuthService: Error en upsert profile:', error.message);
+      if (!existing) {
+        const { error } = await supabase
+          .from('profiles')
+          .upsert(
+            { id: userId, email, username: email.split('@')[0] },
+            { onConflict: 'id' }
+          );
+
+        if (error) {
+          console.error('AuthService: Error en upsert profile:', error.message);
+        } else {
+          console.log('AuthService: Perfil sincronizado con éxito');
+          lastSyncedUserId = userId; // Marcar como sincronizado
+        }
       } else {
-        console.log('AuthService: Perfil sincronizado con éxito');
         lastSyncedUserId = userId; // Marcar como sincronizado
       }
     } catch (err) {

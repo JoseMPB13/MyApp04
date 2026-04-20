@@ -12,6 +12,7 @@ import { supabase } from '../api/supabase';
 import { VaultService } from '../api/vault';
 import WordMatcher from '../components/games/WordMatcher';
 import AIScenario from './AIScenario';
+import { useAppTheme } from '../context/ThemeContext';
 
 interface ActividadesSectionProps {
   userId: string;
@@ -20,6 +21,7 @@ interface ActividadesSectionProps {
 }
 
 const ActividadesSection = ({ userId, onComplete, onMissionStateChange }: ActividadesSectionProps) => {
+  const { colors, isDarkMode } = useAppTheme();
   const [currentMission, setCurrentMission] = useState<string | null>(null);
   const [lessonWords, setLessonWords] = useState<any[]>([]);
 
@@ -70,7 +72,7 @@ const ActividadesSection = ({ userId, onComplete, onMissionStateChange }: Activi
 
   if (currentMission === 'word-matcher') {
     return (
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <TouchableOpacity onPress={() => {
           setCurrentMission(null);
           onMissionStateChange(false);
@@ -89,7 +91,7 @@ const ActividadesSection = ({ userId, onComplete, onMissionStateChange }: Activi
 
   if (currentMission === 'ai-scenario') {
     return (
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
         <TouchableOpacity onPress={() => {
           setCurrentMission(null);
           onMissionStateChange(false);
@@ -107,31 +109,31 @@ const ActividadesSection = ({ userId, onComplete, onMissionStateChange }: Activi
 
   return (
     <ScrollView contentContainerStyle={styles.sectionPadding}>
-      <Text style={styles.sectionTitle}>Misiones Diarias</Text>
+      <Text style={[styles.sectionTitle, { color: colors.text }]}>Misiones Diarias</Text>
       <TouchableOpacity 
-        style={[styles.missionCard, styles.cardShadow]} 
+        style={[styles.missionCard, styles.cardShadow, { backgroundColor: colors.card }]} 
         onPress={() => handleStartMission('word-matcher')}
       >
-        <View style={[styles.missionIcon, { backgroundColor: '#eef1ff' }]}>
-          <Ionicons name="extension-puzzle" size={32} color="#575fcf" />
+        <View style={[styles.missionIcon, { backgroundColor: isDarkMode ? '#2c2c54' : '#eef1ff' }]}>
+          <Ionicons name="extension-puzzle" size={32} color={colors.accent} />
         </View>
         <View style={styles.missionInfo}>
-          <Text style={styles.missionTitle}>Word Matcher</Text>
-          <Text style={styles.missionDesc}>Empareja el vocabulario de la semana.</Text>
+          <Text style={[styles.missionTitle, { color: colors.text }]}>Word Matcher</Text>
+          <Text style={[styles.missionDesc, { color: colors.text, opacity: 0.6 }]}>Empareja el vocabulario de la semana.</Text>
         </View>
-        <Ionicons name="play-circle" size={32} color="#575fcf" />
+        <Ionicons name="play-circle" size={32} color={colors.accent} />
       </TouchableOpacity>
 
       <TouchableOpacity 
-        style={[styles.missionCard, styles.cardShadow]}
+        style={[styles.missionCard, styles.cardShadow, { backgroundColor: colors.card }]}
         onPress={() => handleStartMission('ai-scenario')}
       >
-        <View style={[styles.missionIcon, { backgroundColor: '#fff2f2' }]}>
+        <View style={[styles.missionIcon, { backgroundColor: isDarkMode ? '#4b2c20' : '#fff2f2' }]}>
           <Ionicons name="chatbubbles" size={32} color="#ff4757" />
         </View>
         <View style={styles.missionInfo}>
-          <Text style={styles.missionTitle}>AI Scenario</Text>
-          <Text style={styles.missionDesc}>Practica con tu Tutor IA</Text>
+          <Text style={[styles.missionTitle, { color: colors.text }]}>AI Scenario</Text>
+          <Text style={[styles.missionDesc, { color: colors.text, opacity: 0.6 }]}>Practica con tu Tutor IA</Text>
         </View>
         <Ionicons name="play-circle" size={32} color="#ff4757" />
       </TouchableOpacity>

@@ -71,6 +71,36 @@ export const AITutorService = {
     }
   },
 
+  getDailyTip: async (): Promise<{ english: string; spanish: string }> => {
+    if (!API_KEY) return { english: "Practice makes perfect!", spanish: "¡La práctica hace al maestro!" };
+    
+    const systemPrompt = `
+      Eres un coach simpático para una app de aprendizaje de inglés (estilo Duolingo).
+      Tu trabajo es dar UN solo tip diario o frase motivacional muy corta en inglés (máximo 10 palabras), 
+      junto con su traducción o explicación en español para animar al estudiante.
+      
+      Devuelve SOLO un JSON con este formato exacto:
+      {
+        "english": "Frase motivacional o tip corto en inglés",
+        "spanish": "Traducción o breve explicación en español"
+      }
+    `;
+
+    try {
+      const data = await AITutorService.fetchGroq([{ role: 'system', content: systemPrompt }]);
+      return { 
+        english: data.english || "Keep pushing forward!", 
+        spanish: data.spanish || "¡Sigue avanzando!" 
+      };
+    } catch (error) {
+      console.error('AITutorService.getDailyTip Error:', error);
+      return { 
+        english: "Keep going, you're doing great!", 
+        spanish: "¡Sigue así, lo estás haciendo genial!" 
+      };
+    }
+  },
+
   getLessonResponse: async (
     messages: any[], 
     scenarioGoal: string, 

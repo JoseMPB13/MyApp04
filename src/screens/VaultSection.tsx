@@ -15,12 +15,14 @@ import * as Haptics from 'expo-haptics';
 import { VaultService, VaultWord } from '../api/vault';
 import { AITutorService } from '../api/ai_tutor';
 import { useTranslation } from '../hooks/useTranslation';
+import { useAppTheme } from '../context/ThemeContext';
 
 interface VaultSectionProps {
   userId: string;
 }
 
 const VaultSection = ({ userId }: VaultSectionProps) => {
+  const { colors } = useAppTheme();
   const [words, setWords] = useState<VaultWord[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -131,12 +133,12 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView 
         showsVerticalScrollIndicator={false} 
         contentContainerStyle={styles.scrollContent}
       >
-        <Text style={styles.sectionTitle}>The Vault</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>The Vault</Text>
         <Text style={styles.sectionSubtitle}>Tu almacén de conocimiento personal 💎</Text>
 
         {/* Bento Hub Hub Area */}
@@ -157,29 +159,29 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
           </TouchableOpacity>
 
           {/* Stats Card */}
-          <View style={[styles.bentoCard, styles.statsCard, styles.cardShadow]}>
+          <View style={[styles.bentoCard, styles.statsCard, styles.cardShadow, { backgroundColor: colors.card }]}>
             <Text style={styles.statsCount}>{words.length}</Text>
-            <Text style={styles.statsLabel}>Guardadas</Text>
+            <Text style={[styles.statsLabel, { color: colors.text, opacity: 0.7 }]}>Guardadas</Text>
           </View>
 
           {/* Mastered Card */}
-          <View style={[styles.bentoCard, styles.masteredCard, styles.cardShadow]}>
+          <View style={[styles.bentoCard, styles.masteredCard, styles.cardShadow, { backgroundColor: colors.card }]}>
              <Ionicons name="trophy" size={20} color="#FFD32D" />
-             <Text style={styles.masteredLabel}>Domina 5 más para subir de nivel</Text>
+             <Text style={[styles.masteredLabel, { color: colors.text }]}>Domina 5 más para subir de nivel</Text>
           </View>
         </View>
 
         {/* Form Overlay-ish */}
         {showForm && (
-          <View style={[styles.formContainer, styles.cardShadow]}>
-            <Text style={styles.formTitle}>Añadir al Baúl</Text>
+          <View style={[styles.formContainer, styles.cardShadow, { backgroundColor: colors.card }]}>
+            <Text style={[styles.formTitle, { color: colors.text }]}>Añadir al Baúl</Text>
             
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Inglés</Text>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Inglés</Text>
               <View style={styles.inputWrapper}>
                 <TextInput 
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: colors.border, color: colors.text }]}
                   placeholder="e.g. Resilience"
                   value={wordEn}
                   onChangeText={(text) => {
@@ -195,10 +197,10 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Español</Text>
+              <Text style={[styles.inputLabel, { color: colors.text }]}>Español</Text>
               <View style={styles.inputWrapper}>
                 <TextInput 
-                  style={styles.input}
+                  style={[styles.input, { backgroundColor: colors.border, color: colors.text }]}
                   placeholder="e.g. Resiliencia"
                   value={wordEs}
                   onChangeText={(text) => {
@@ -234,7 +236,7 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
         )}
 
         <View style={styles.listHeader}>
-          <Text style={styles.listTitle}>Tus Palabras</Text>
+          <Text style={[styles.listTitle, { color: colors.text }]}>Tus Palabras</Text>
           <TouchableOpacity onPress={loadVault}>
             <Ionicons name="refresh" size={20} color="#575fcf" />
           </TouchableOpacity>
@@ -263,10 +265,10 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
                   {catWords.map((w) => (
                     <View 
                       key={w.id} 
-                      style={[styles.wordCard, styles.cardShadow3D]}
+                      style={[styles.wordCard, styles.cardShadow3D, { backgroundColor: colors.card, borderColor: colors.border }]}
                     >
                       <View style={styles.wordInfo}>
-                        <Text style={styles.wordEs}>{w.word_es}</Text>
+                        <Text style={[styles.wordEs, { color: colors.text }]}>{w.word_es}</Text>
                         <View style={styles.wordEnRow}>
                            <Text style={styles.wordEn}>{w.word_en}</Text>
                         </View>

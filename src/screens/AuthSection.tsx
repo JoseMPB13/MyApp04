@@ -18,6 +18,7 @@ export default function AuthSection() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
 
@@ -36,7 +37,11 @@ export default function AuthSection() {
       } else if (isLogin) {
         await AuthService.signIn(email, password);
       } else {
-        await AuthService.signUp(email, password);
+        if (!username.trim()) {
+           Alert.alert('Error', 'Por favor ingresa un nombre de usuario válido.');
+           return;
+        }
+        await AuthService.signUp(email, password, username.trim());
         Alert.alert(
           'Registro exitoso',
           'Por favor revisa tu correo para confirmar tu cuenta antes de iniciar sesión.'
@@ -124,6 +129,22 @@ export default function AuthSection() {
               <Text style={[styles.tabText, !isLogin && styles.activeTabText]}>Registrarse</Text>
             </TouchableOpacity>
           </View>
+
+          {!isLogin && (
+            <View style={styles.inputWrapper}>
+              <Text style={styles.label}>Nombre de Usuario</Text>
+              <View style={styles.inputBox}>
+                <Ionicons name="person-outline" size={18} color="#A4B0BE" style={styles.icon} />
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="ej. amigo99"
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                />
+              </View>
+            </View>
+          )}
 
           <View style={styles.inputWrapper}>
             <Text style={styles.label}>Email</Text>
