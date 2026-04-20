@@ -50,8 +50,8 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
     const timer = setTimeout(async () => {
       const translation = await translate(wordEn, 'Spanish');
       if (translation && !wordEs.trim()) {
-        setWordEn(wordEn); // trigger if needed, but setWordEs is main
         setWordEs(translation);
+        setActiveInput(null); // Clear focus to avoid loops
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     }, 1200);
@@ -67,6 +67,7 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
       const translation = await translate(wordEs, 'English');
       if (translation && !wordEn.trim()) {
         setWordEn(translation);
+        setActiveInput(null); // Clear focus to avoid loops
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
     }, 1200);

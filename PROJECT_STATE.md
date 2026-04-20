@@ -1,18 +1,14 @@
 # MyApp03 - PROJECT_STATE.md
-**Current Version**: v16.0.0
+**Current Version**: v17.0.0
 **Last Sync**: 2026-04-20
-**Current Status**: Gemini 1.5 Flash Restored & Vault Stabilized
+**Current Status**: Gemini 2.5 Flash Restored & Project v17 Stabilized
 **Author**: Antigravity (AI Architect)
 
-## 🎯 Reciente / Fixes de Estabilidad (v16)
+## 🎯 Reciente / Fixes de Estabilidad (v17)
 - **Motor de Traducción**: 
-    - Restaurado **Gemini 1.5 Flash** (Free Tier) mediante fetch directo.
-    - Eliminada dependencia temporal de MyMemory.
-    - Prompting estricto para respuestas de una sola palabra.
-- **Sincronización de Bóveda**: 
-    - Resuelto error 409: Payload refinado para excluir `id` autogenerado.
-    - Implementado `upsert` robusto en `ensureProfile` para evitar conflictos de RLS y duplicidad.
-    - Validación obligatoria de `userId` en el formulario del Baúl.
+    - Migración definitiva a **Gemini 2.5-flash** (API v1 estable).
+    - Eliminadas todas las referencias a v1beta y gemini-1.5-flash.
+    - Optimizada la URL de endpoint para evitar errores 404 por modelos retirados.
 
 ## 20/04/2026 - The Vault & Modular Refactor v10
 - **Decisión**: Arquitectura modular en `src/screens`.

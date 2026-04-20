@@ -15,10 +15,10 @@ Se reportaron errores 400 (Bad Request) al intentar persistir datos en Supabase 
 - **Control de Flujo**: Se añadió la lógica de "Solo traducir si el campo opuesto está vacío" para evitar bucles infinitos de traducción y para no sobrescribir correcciones manuales del usuario.
 
 ## Implementación del Hook `useGemini`
-Siguiendo la arquitectura **Zero-Dependency**, se implementó un hook que usa `fetch` nativo hacia los endpoints de Google AI Studio (Gemini 1.5 Flash), evitando librerías pesadas como el `@google/generative-ai`.
+Siguiendo la arquitectura **Zero-Dependency**, se implementó un hook que usa `fetch` nativo hacia los endpoints de Google AI Studio (Gemini 2.5-flash), evitando librerías pesadas como el `@google/generative-ai`.
 
 ```tsx
-const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 const data = await response.json();
 const translatedText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 ```

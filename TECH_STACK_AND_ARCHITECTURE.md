@@ -7,7 +7,7 @@
 - **Animaciones**: `Animated` de React Native o `react-native-reanimated` (incluida en Expo).
 
 ## Inteligencia Artificial
-- **Modelo**: Gemini Flash 1.5.
+- **Modelo**: Gemini Flash 2.5 (v1 estable).
 - **Integración**: `fetch` directo a la API de Google AI Studio (Zero-SDK pesados).
 - **Formato de Salida**: JSON estructurado para parsing automático de feedback.
 

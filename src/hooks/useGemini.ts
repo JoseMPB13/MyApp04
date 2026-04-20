@@ -20,14 +20,9 @@ export const useGemini = () => {
     setLoading(true);
     setError(null);
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
-    const prompt = `Translate the following word or short phrase to ${targetLanguage}. 
-    Response rules:
-    - Output ONLY the translated text.
-    - No explanations, no punctuation unless part of the word.
-    - Match the capitalization of the input.
-    Input: "${text.trim()}"`;
+    const prompt = `Translate the word/phrase to ${targetLanguage}. Return ONLY the translated string. No JSON, no quotes, no extra text. Input: "${text.trim()}"`;
 
     const payload = {
       contents: [{
@@ -35,8 +30,6 @@ export const useGemini = () => {
       }],
       generationConfig: {
         temperature: 0.1,
-        topP: 0.95,
-        topK: 40,
         maxOutputTokens: 20,
       }
     };
@@ -58,7 +51,7 @@ export const useGemini = () => {
         return translated;
       }
 
-      console.error('Gemini API Error Response:', data);
+      console.error('Gemini API Error Detail:', JSON.stringify(data, null, 2));
       throw new Error('Error en la respuesta de Gemini');
     } catch (err: any) {
       console.error('Gemini Translation Error:', err);

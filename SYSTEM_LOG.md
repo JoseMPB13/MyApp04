@@ -10,19 +10,9 @@
 - **Decisión**: Arquitectura modular en `src/screens`.
 - **Decisión**: Layout Bento para el Baúl.
 
-## 20/04/2026 - AI Stabilization v11 (UUID & Translation)
-- **Decisión**: Corrección de tipos a UUID.
-- **Decisión**: Lógica de Debounce de 1000ms.
-
-## 20/04/2026 - Gemini Restore & 409 Resolution v16
-- **Decisión**: Restaurar Gemini 1.5 Flash.
-  - **Contexto**: Inestabilidad con MyMemory y necesidad de mayor precisión.
-  - **Acción**: Restablecido fetch directo a Google AI Studio con prompt de una sola palabra.
-- **Decisión**: Resolución de Error 409 (Conflict).
-  - **Contexto**: Fallos en inserción por ID vacío.
-  - **Acción**: Refactorización de `VaultService` para omitir `id` en inserciones y dejar que PostgreSQL lo genere.
-- **Decisión**: Fortalecimiento de Perfiles con UPSERT.
-  - **Contexto**: Errores RLS y de clave foránea al crear perfiles duplicados.
-  - **Acción**: Uso de `.upsert()` en `AuthService` para garantizar sincronización de `email` y `userId`.
-- **Decisión**: Validación de Sesión en UI.
-  - **Acción**: Bloqueo del botón "Guardar" si `userId` no está presente, previniendo errores de base de datos en el cliente.
+## 20/04/2026 - Gemini v2.5-flash Migration v17
+- **Decisión**: Migrar al modelo **Gemini 2.5-flash**.
+  - **Razón**: El modelo 1.5-flash fue retirado o movido a endpoints específicos que causaban errores 404 en v1beta.
+  - **Acción**: Actualizada la URL a la versión estable `v1` y el modelo a `2.5-flash`.
+- **Decisión**: Limpieza de referencias obsoletas.
+  - **Acción**: Eliminadas todas las menciones a `v1beta` y `1.5-flash` en la documentación técnica para evitar confusiones futuras.

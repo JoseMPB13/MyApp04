@@ -15,9 +15,9 @@ Tras una fase de inestabilidad donde se detectaron errores 409 (Conflict) en Sup
 - **Solución**: Migración de `.insert()` a `.upsert({ id, email }, { onConflict: 'id' })`.
 - **Aprendizaje**: El uso de `upsert` es fundamental en apps offline-ready o con sincronización repetitiva para mantener la integridad sin lanzar errores de llave duplicada.
 
-### 3. Restauración de Gemini 1.5 Flash (Zero-Dependency)
+### 3. Restauración de Gemini 2.5 Flash (Zero-Dependency)
 - **Problema**: Dependencia temporal de MyMemory API (limitada y menos precisa) tras fallos en la clave de Gemini.
-- **Solución**: Restauración de Gemini 1.5 Flash usando `fetch` nativo al endpoint de Google Generative Language.
+- **Solución**: Restauración de Gemini 2.5 Flash usando `fetch` nativo al endpoint de Google Generative Language.
 - **Prompting Estricto**: Se configuró un prompt del sistema para que la IA solo responda con la traducción literal, facilitando el parsing sin explicaciones adicionales.
 
 ## Implementación Técnica (VaultSection)
