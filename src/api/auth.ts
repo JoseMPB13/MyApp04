@@ -77,7 +77,7 @@ export const AuthService = {
       const { error } = await supabase
         .from('profiles')
         .upsert(
-          { id: userId, email: email, updated_at: new Date().toISOString() },
+          { id: userId, email },
           { onConflict: 'id' }
         );
 

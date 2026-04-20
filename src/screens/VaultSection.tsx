@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { VaultService, VaultWord } from '../api/vault';
-// useGemini removed to eliminate credit dependence
+import { useGemini } from '../hooks/useGemini';
 
 // Inyectado vía props desde la sesión de Supabase
 const CATEGORIES = ['General', 'Vocabulario', 'Viajes', 'Negocios', 'Frases'];
@@ -32,6 +32,10 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
   const [wordEs, setWordEs] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [saving, setSaving] = useState(false);
+  
+  // AI Translation Hook
+  const { translate, loading: translating, error: geminiError } = useGemini();
+  const [activeInput, setActiveInput] = useState<'en' | 'es' | null>(null);
 
 
 
@@ -39,7 +43,36 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
     if (userId) loadVault();
   }, [userId]);
 
-  // Auto-translation logic removed for manual-only input
+  // Auto-translation logic for English -> Spanish
+  useEffect(() => {
+    if (activeInput !== 'en' || !wordEn.trim() || wordEs.trim()) return;
+
+    const timer = setTimeout(async () => {
+      const translation = await translate(wordEn, 'Spanish');
+      if (translation && !wordEs.trim()) {
+        setWordEn(wordEn); // trigger if needed, but setWordEs is main
+        setWordEs(translation);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [wordEn, activeInput]);
+
+  // Auto-translation logic for Spanish -> English
+  useEffect(() => {
+    if (activeInput !== 'es' || !wordEs.trim() || wordEn.trim()) return;
+
+    const timer = setTimeout(async () => {
+      const translation = await translate(wordEs, 'English');
+      if (translation && !wordEn.trim()) {
+        setWordEn(translation);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [wordEs, activeInput]);
 
   const loadVault = async () => {
     if (!userId) return;
@@ -50,11 +83,12 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
   };
 
   const handleAddWord = async () => {
-    if (!wordEn || !wordEs) {
+    if (!userId || !wordEn || !wordEs) {
+      if (!userId) console.error('VaultSection: No hay userId disponible');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
-        'Campos incompletos', 
-        'Por favor, asegúrate de que ambos campos (Inglés y Español) estén llenos. Si la traducción automática falla, puedes escribirlos manualmente.'
+        'Error', 
+        !userId ? 'No se detectó una sesión activa.' : 'Por favor completa ambos campos.'
       );
       return;
     }
@@ -148,9 +182,15 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
                   style={styles.input}
                   placeholder="e.g. Resilience"
                   value={wordEn}
-                  onChangeText={(text) => setWordEn(text)}
+                  onChangeText={(text) => {
+                    setWordEn(text);
+                    setActiveInput('en');
+                  }}
                   placeholderTextColor="#A4B0BE"
                 />
+                {translating && activeInput === 'es' && (
+                  <ActivityIndicator size="small" color="#575fcf" style={styles.inputLoader} />
+                )}
               </View>
             </View>
 
@@ -161,9 +201,15 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
                   style={styles.input}
                   placeholder="e.g. Resiliencia"
                   value={wordEs}
-                  onChangeText={(text) => setWordEs(text)}
+                  onChangeText={(text) => {
+                    setWordEs(text);
+                    setActiveInput('es');
+                  }}
                   placeholderTextColor="#A4B0BE"
                 />
+                {translating && activeInput === 'en' && (
+                  <ActivityIndicator size="small" color="#575fcf" style={styles.inputLoader} />
+                )}
               </View>
             </View>
 
@@ -195,10 +241,10 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
               style={[
                 styles.saveButton, 
                 styles.cardShadow3D,
-                (!wordEn.trim() || !wordEs.trim()) && styles.saveButtonDisabled
+                (!wordEn.trim() || !wordEs.trim() || !userId) && styles.saveButtonDisabled
               ]}
               onPress={handleAddWord}
-              disabled={saving || !wordEn.trim() || !wordEs.trim()}
+              disabled={saving || !wordEn.trim() || !wordEs.trim() || !userId}
             >
               {saving ? (
                 <ActivityIndicator color="#FFF" />
@@ -285,7 +331,8 @@ const styles = StyleSheet.create({
   inputGroup: { marginBottom: 16 },
   inputLabel: { fontSize: 14, fontWeight: '800', color: '#485460', marginBottom: 8 },
   inputWrapper: { position: 'relative', justifyContent: 'center' },
-  input: { backgroundColor: '#F1F2F6', borderRadius: 12, padding: 14, fontSize: 16, color: '#2d3436', fontWeight: '600' },
+  input: { backgroundColor: '#F1F2F6', borderRadius: 12, padding: 14, fontSize: 16, color: '#2d3436', fontWeight: '600', paddingRight: 40 },
+  inputLoader: { position: 'absolute', right: 12 },
   categoryPicker: { flexDirection: 'row', flexWrap: 'wrap' },
   categoryChip: { backgroundColor: '#F1F2F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginRight: 8, marginBottom: 8, borderWidth: 1, borderColor: 'transparent' },
   categoryChipActive: { backgroundColor: '#EEF1FF', borderColor: '#575fcf' },

@@ -12,12 +12,17 @@
 
 ## 20/04/2026 - AI Stabilization v11 (UUID & Translation)
 - **Decisión**: Corrección de tipos a UUID.
-  - **Contexto**: El error 400 en Supabase era causado por intentar comparar un `UUID` col con un string no-UUID.
-  - **Acción**: Migración de `USER_ID` a formato UUID estándar.
-- **Decisión**: Implementación de `useGemini` con `fetch`.
-  - **Contexto**: Necesidad de traducción automática en el Baúl.
-  - **Acción**: Fetch directo a la API de Google AI Studio para mantener la política de cero dependencias externas pesadas.
 - **Decisión**: Lógica de Debounce de 1000ms.
-  - **Razón**: Reducir latencia percibida y consumo de cuota de API mientras se provee feedback visual en tiempo real.
-- **Decisión**: Regla de "No Sobrescritura" en traducciones.
-  - **Razón**: Priorizar el input manual del usuario sobre las sugerencias de la IA.
+
+## 20/04/2026 - Gemini Restore & 409 Resolution v16
+- **Decisión**: Restaurar Gemini 1.5 Flash.
+  - **Contexto**: Inestabilidad con MyMemory y necesidad de mayor precisión.
+  - **Acción**: Restablecido fetch directo a Google AI Studio con prompt de una sola palabra.
+- **Decisión**: Resolución de Error 409 (Conflict).
+  - **Contexto**: Fallos en inserción por ID vacío.
+  - **Acción**: Refactorización de `VaultService` para omitir `id` en inserciones y dejar que PostgreSQL lo genere.
+- **Decisión**: Fortalecimiento de Perfiles con UPSERT.
+  - **Contexto**: Errores RLS y de clave foránea al crear perfiles duplicados.
+  - **Acción**: Uso de `.upsert()` en `AuthService` para garantizar sincronización de `email` y `userId`.
+- **Decisión**: Validación de Sesión en UI.
+  - **Acción**: Bloqueo del botón "Guardar" si `userId` no está presente, previniendo errores de base de datos en el cliente.

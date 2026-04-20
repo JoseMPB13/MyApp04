@@ -1,19 +1,18 @@
 # MyApp03 - PROJECT_STATE.md
-**Current Version**: v15.0.0
+**Current Version**: v16.0.0
 **Last Sync**: 2026-04-20
-**Current Status**: Stabilized AI & Sync
+**Current Status**: Gemini 1.5 Flash Restored & Vault Stabilized
 **Author**: Antigravity (AI Architect)
 
-## 🎯 Reciente / Fixes de Estabilidad (v15)
+## 🎯 Reciente / Fixes de Estabilidad (v16)
 - **Motor de Traducción**: 
-    - Migrado de Gemini API (cuota limitada) a **MyMemory API** (gratuita, sin key).
-    - Traducción instantánea bidireccional EN<->ES sin depender de cuota.
+    - Restaurado **Gemini 1.5 Flash** (Free Tier) mediante fetch directo.
+    - Eliminada dependencia temporal de MyMemory.
+    - Prompting estricto para respuestas de una sola palabra.
 - **Sincronización de Bóveda**: 
-    - Resuelto error 409: `user_vault` requiere foreign key a `profiles`.
-    - Implementado `ensureProfile` automático al login y al arrancar la app.
-    - Logging detallado de errores Supabase (message, code, details).
-- **Web Compliance**: Eliminadas TODAS las advertencias de `shadow*` en toda la app.
-- **Email Template**: Rediseñada plantilla de confirmación con estilo premium.
+    - Resuelto error 409: Payload refinado para excluir `id` autogenerado.
+    - Implementado `upsert` robusto en `ensureProfile` para evitar conflictos de RLS y duplicidad.
+    - Validación obligatoria de `userId` en el formulario del Baúl.
 
 ## 20/04/2026 - The Vault & Modular Refactor v10
 - **Decisión**: Arquitectura modular en `src/screens`.
