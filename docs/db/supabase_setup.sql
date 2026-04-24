@@ -1,15 +1,7 @@
 -- SCRIPT DE INICIALIZACIÓN: AI Language Coach (Supabase)
 
 -- 1. TABLA DE PERFILES (Extensión de Auth Users)
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users ON DELETE CASCADE,
-  username TEXT UNIQUE,
-  email TEXT,
-  display_name TEXT,
-  avatar_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+
 
 -- 2. TABLA DE RACHAS
 CREATE TABLE IF NOT EXISTS public.user_streaks (
