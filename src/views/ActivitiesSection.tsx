@@ -39,10 +39,15 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
       setCurrentLevel(level);
       
       const vaultWords = await VaultService.getWords(userId);
-      const vaultEn = vaultWords.map(w => w.word_en);
+      const vaultEn = vaultWords.map(w => w.word_en.toLowerCase());
       
       const generated = await AITutorService.generateMatcherLevel(level, vaultEn);
-      setLessonWords(generated);
+      
+      const mappedGenerated = generated.map((word: any) => ({
+        ...word,
+        inVault: vaultEn.includes(word.translation.toLowerCase())
+      }));
+      setLessonWords(mappedGenerated);
     } catch (error) {
       console.error("Error loading level words:", error);
     } finally {
@@ -80,10 +85,11 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
             userId={userId}
             level={currentLevel}
             exp={currentExp}
-            onComplete={async (matched) => {
-              await MissionsService.addMatcherExp(userId, 25); // +25 EXP por victoria
+            onComplete={async (matched, maxCombo) => {
+              const expGain = 25 + (maxCombo * 5);
+              await MissionsService.addMatcherExp(userId, expGain);
               loadLessonWords();
-              onComplete('word-matcher', matched);
+              onComplete('word-matcher', { matched, expGain });
             }} 
           />
         )}

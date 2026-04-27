@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,9 +10,20 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as Speech from 'expo-speech';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { VaultService } from '../../api/vault';
 import { AITutorService } from '../../api/ai_tutor';
 import { useAppTheme } from '../../context/ThemeContext';
+
+function shuffleArray<T>(array: T[]): T[] {
+  const newArr = [...array];
+  for (let i = newArr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+  }
+  return newArr;
+}
 
 
 
@@ -42,7 +53,7 @@ export default function WordMatcher({
   userId: string,
   level: number,
   exp: number,
-  onComplete: (matchedWords: WordPair[]) => void 
+  onComplete: (matchedWords: WordPair[], maxCombo: number) => void 
 }) {
   const { colors, isDarkMode } = useAppTheme();
   const [esCards, setEsCards] = useState<Card[]>([]);
@@ -58,6 +69,22 @@ export default function WordMatcher({
   const [showSummary, setShowSummary] = useState(false);
   const [savedWords, setSavedWords] = useState<string[]>([]);
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  const [combo, setCombo] = useState(0);
+  const [maxCombo, setMaxCombo] = useState(0);
+  const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
+
+  useEffect(() => {
+    return () => {
+      timeoutRefs.current.forEach(clearTimeout);
+    };
+  }, []);
+
+  const safeSetTimeout = (cb: () => void, delay: number) => {
+    const id = setTimeout(cb, delay);
+    timeoutRefs.current.push(id);
+    return id;
+  };
 
   // Initialize
   useEffect(() => {
@@ -75,8 +102,8 @@ export default function WordMatcher({
       }
     });
     
-    setEsCards(esList.sort(() => Math.random() - 0.5));
-    setEnCards(enList.sort(() => Math.random() - 0.5));
+    setEsCards(shuffleArray(esList));
+    setEnCards(shuffleArray(enList));
     setSavedWords(alreadySaved);
   }, [words]);
 
@@ -85,14 +112,19 @@ export default function WordMatcher({
     if (selectedEs && selectedEn) {
       if (selectedEs.matchId === selectedEn.matchId) {
         // MATCH!
+        setCombo(prev => {
+          const newCombo = prev + 1;
+          setMaxCombo(m => Math.max(m, newCombo));
+          return newCombo;
+        });
         const mId = selectedEs.matchId;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         
-        setTimeout(() => {
+        safeSetTimeout(() => {
           setMatchedIds(prev => {
             const next = [...prev, mId];
             if (next.length === words.length && words.length > 0) {
-              setTimeout(() => setShowSummary(true), 600);
+              safeSetTimeout(() => setShowSummary(true), 600);
             }
             return next;
           });
@@ -102,6 +134,7 @@ export default function WordMatcher({
         
       } else {
         // ERROR
+        setCombo(0);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         const wEs = selectedEs;
         const wEn = selectedEn;
@@ -110,7 +143,7 @@ export default function WordMatcher({
         setSelectedEs(null);
         setSelectedEn(null);
         
-        setTimeout(() => {
+        safeSetTimeout(() => {
           setWrongEs(null);
           setWrongEn(null);
         }, 800);
@@ -123,6 +156,10 @@ export default function WordMatcher({
     if (matchedIds.includes(card.matchId) || (wrongEs !== null)) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    if (card.type === 'en') {
+      Speech.speak(card.content, { language: 'en-US' });
+    }
     
     if (card.type === 'es') {
       // Toggle off if same
@@ -209,7 +246,7 @@ export default function WordMatcher({
           <View style={[styles.progressBarBg, { backgroundColor: colors.border }]}>
             <View style={[styles.progressBarFill, { width: `${exp % 100}%`, backgroundColor: colors.accent }]} />
           </View>
-          <Text style={styles.expGainText}>+25 EXP ganados</Text>
+          <Text style={styles.expGainText}>+{25 + maxCombo * 5} EXP ganados (Combo: {maxCombo}x)</Text>
         </View>
         <Text style={[styles.subtitle, { color: colors.text, opacity: 0.7 }]}>Has emparejado las palabras correctamente. Guárdalas en tu baúl para no olvidarlas.</Text>
         
@@ -252,7 +289,7 @@ export default function WordMatcher({
 
         <TouchableOpacity 
           style={[styles.primaryBtn, styles.cardShadow, { backgroundColor: colors.accent }]} 
-          onPress={() => onComplete(words)}
+          onPress={() => onComplete(words, maxCombo)}
         >
           <Text style={styles.primaryBtnText}>Siguiente Nivel</Text>
         </TouchableOpacity>
@@ -260,21 +297,20 @@ export default function WordMatcher({
     );
   }
 
-  // GAME RENDER
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Text style={[styles.title, { color: colors.text }]}>Nivel {level} - Empareja</Text>
       
       <View style={styles.columnsContainer}>
-        {/* Spanish Column */}
-        <View style={styles.column}>
-          {esCards.map(c => renderCard(c))}
-        </View>
-
-        {/* English Column */}
-        <View style={styles.column}>
+        {/* English Column (Left) */}
+        <Animated.View style={styles.column} entering={FadeInDown.delay(100).springify()}>
           {enCards.map(c => renderCard(c))}
-        </View>
+        </Animated.View>
+
+        {/* Spanish Column (Right) */}
+        <Animated.View style={styles.column} entering={FadeInDown.delay(200).springify()}>
+          {esCards.map(c => renderCard(c))}
+        </Animated.View>
       </View>
     </View>
   );

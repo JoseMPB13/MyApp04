@@ -172,28 +172,28 @@ export const AITutorService = {
   },
 
   generateMatcherLevel: async (level: number, vaultWords: string[]): Promise<WordPair[]> => {
-    let pairCount = 4;
-    let difficultyRule = "Genera 4 pares de palabras muy básicas.";
+    let pairCount = 3;
+    let difficultyRule = "";
 
-    if (level >= 4 && level <= 7) {
+    if (level <= 3) {
+      pairCount = 3;
+      difficultyRule = "Genera exactamente 3 pares de palabras. El vocabulario debe ser muy básico y COMPLETAMENTE NUEVO para el usuario. No uses palabras complicadas.";
+    } else if (level >= 4 && level <= 7) {
+      pairCount = 4;
+      difficultyRule = `Genera exactamente 4 pares de palabras. Mezcla algunas palabras conocidas del usuario: [${vaultWords.slice(0, 5).join(', ')}] con palabras NUEVAS de nivel intermedio.`;
+    } else {
       pairCount = 5;
-      const mixRule = vaultWords.length >= 2 
-        ? "Mezcla al menos 2 palabras de las que ya conoce con 3 nuevas de nivel intermedio." 
-        : "Genera 5 pares de palabras de nivel intermedio.";
-      difficultyRule = mixRule;
-    } else if (level >= 8) {
-      pairCount = 6;
-      difficultyRule = "Genera 6 pares de palabras avanzadas o phrasal verbs.";
+      difficultyRule = `Genera exactamente 5 pares de palabras. Mezcla palabras de su baúl: [${vaultWords.slice(0, 5).join(', ')}] con palabras NUEVAS de nivel avanzado o phrasal verbs complejos.`;
     }
 
     const systemPrompt = `
-      Eres un diseñador de niveles para un juego de emparejar palabras en inglés. 
-      El usuario está en el nivel ${level}. 
-      Las palabras que ya conoce son: [${vaultWords.join(', ')}].
+      Eres un experto diseñador de niveles educativos para aprender inglés.
+      Tu tarea es generar un set de palabras para un juego de emparejar.
+      Nivel del usuario: ${level}.
       
-      Regla de dificultad: ${difficultyRule}
+      REGLA CRÍTICA: ${difficultyRule}
       
-      Devuelve ESTRICTAMENTE un JSON con el formato:
+      FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
       {
         "pairs": [
           { "word": "palabra_en_español", "translation": "palabra_en_inglés" }
@@ -203,21 +203,22 @@ export const AITutorService = {
 
     try {
       const data = await fetchGroq([{ role: 'system', content: systemPrompt }]);
-      
       const rawPairs = data.pairs || [];
-      return rawPairs.map((p: any, index: number) => ({
-        id: `gen-${level}-${index}`,
+      
+      // Limitar al pairCount solicitado por si la IA se excede
+      return rawPairs.slice(0, pairCount).map((p: any, index: number) => ({
+        id: `gen-${level}-${index}-${Date.now()}`,
         matchId: index + 1,
         word: p.word,
         translation: p.translation
       }));
     } catch (error) {
       console.error('AITutorService.generateMatcherLevel Error:', error);
+      // Fallback: 3 pares básicos por defecto
       return [
-        { id: 'f1', matchId: 1, word: 'hola', translation: 'hello' },
-        { id: 'f2', matchId: 2, word: 'adiós', translation: 'goodbye' },
-        { id: 'f3', matchId: 3, word: 'gracias', translation: 'thank you' },
-        { id: 'f4', matchId: 4, word: 'por favor', translation: 'please' }
+        { id: 'f1', matchId: 1, word: 'casa', translation: 'house' },
+        { id: 'f2', matchId: 2, word: 'perro', translation: 'dog' },
+        { id: 'f3', matchId: 3, word: 'gato', translation: 'cat' }
       ];
     }
   },
