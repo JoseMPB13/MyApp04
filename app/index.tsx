@@ -3,13 +3,13 @@ import {
   StyleSheet,
   Text,
   View,
-  SafeAreaView,
   StatusBar,
   TouchableOpacity,
   ActivityIndicator,
   Platform,
-  Animated,
 } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthService } from '../src/api/auth';
 import AuthSection from '../src/views/AuthSection';
@@ -19,38 +19,43 @@ import VaultSection from '../src/views/VaultSection';
 import InicioSection from '../src/views/InicioSection';
 import SettingsSection from '../src/views/SettingsSection';
 import { useAppTheme } from '../src/context/ThemeContext';
+import { useUser } from '../src/context/UserContext';
 
 export default function HomeScreen() {
-  const { colors, isDarkMode, updateUsername } = useAppTheme();
+  const { colors, isDarkMode } = useAppTheme();
+  const { updateUsername } = useUser();
+  const insets = useSafeAreaInsets();
   
   const [activeTab, setActiveTab] = useState('inicio');
   const [streak, setStreak] = useState<StreakData | null>(null);
   const [session, setSession] = useState<any>(null);
   const [initializing, setInitializing] = useState(true);
   const [isNavVisible, setIsNavVisible] = useState(true);
-  const navAnim = useRef(new Animated.Value(0)).current;
+  const navAnim = useSharedValue(0);
 
   const toggleNav = () => {
     const toValue = isNavVisible ? 130 : 0;
-    Animated.spring(navAnim, {
-      toValue,
-      useNativeDriver: true,
-      friction: 8,
-      tension: 40,
-    }).start();
+    navAnim.value = withSpring(toValue, {
+      damping: 8,
+      stiffness: 40,
+    });
     setIsNavVisible(!isNavVisible);
   };
 
   const handleMissionStateChange = (active: boolean) => {
     const toValue = active ? 130 : 0;
-    Animated.spring(navAnim, {
-      toValue,
-      useNativeDriver: true,
-      friction: 8,
-      tension: 40,
-    }).start();
+    navAnim.value = withSpring(toValue, {
+      damping: 8,
+      stiffness: 40,
+    });
     setIsNavVisible(!active);
   };
+
+  const animatedNavStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: navAnim.value }],
+    };
+  });
 
   const fetchFullProfile = useCallback(async (user: any) => {
     await AuthService.ensureProfile(user.id, user.email || '');
@@ -68,26 +73,29 @@ export default function HomeScreen() {
   }, [session?.user?.id]);
 
   useEffect(() => {
+    let isMounted = true;
+
     AuthService.getCurrentUser().then(async (user) => {
       if (user) {
         const fullUser = await fetchFullProfile(user);
-        setSession({ user: fullUser });
+        if (isMounted) setSession({ user: fullUser });
       } else {
-        setSession(null);
+        if (isMounted) setSession(null);
       }
-      setInitializing(false);
+      if (isMounted) setInitializing(false);
     });
 
     const { data: authListener } = AuthService.onAuthStateChange(async (newSession) => {
       if (newSession?.user) {
         const fullUser = await fetchFullProfile(newSession.user);
-        setSession({ ...newSession, user: fullUser });
+        if (isMounted) setSession({ ...newSession, user: fullUser });
       } else {
-        setSession(null);
+        if (isMounted) setSession(null);
       }
     });
 
     return () => {
+      isMounted = false;
       if (authListener) authListener.subscription.unsubscribe();
     };
   }, [fetchFullProfile]);
@@ -117,7 +125,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
       <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} />
       
       <View style={styles.mainContent}>
@@ -143,7 +151,7 @@ export default function HomeScreen() {
         style={[
           styles.navHandle, 
           styles.cardShadow, 
-          { bottom: isNavVisible ? 120 : 20, backgroundColor: colors.card, borderColor: colors.border }
+          { bottom: isNavVisible ? insets.bottom + 85 : insets.bottom, backgroundColor: colors.card, borderColor: colors.border }
         ]} 
         onPress={toggleNav}
       >
@@ -154,7 +162,7 @@ export default function HomeScreen() {
         />
       </TouchableOpacity>
 
-      <Animated.View style={[styles.navContainer, { transform: [{ translateY: navAnim }] }]}>
+      <Animated.View style={[styles.navContainer, { bottom: insets.bottom }, animatedNavStyle]}>
         <View style={[styles.navBar, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {['inicio', 'activities', 'vault', 'settings'].map((tab) => (
             <TouchableOpacity key={tab} onPress={() => setActiveTab(tab)} style={styles.navItem} activeOpacity={0.6}>
@@ -173,7 +181,7 @@ export default function HomeScreen() {
           ))}
         </View>
       </Animated.View>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -6,10 +6,12 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '../api/supabase';
 import { VaultService } from '../api/vault';
+import { MissionsService } from '../api/missions';
+import { AITutorService } from '../api/ai_tutor';
 import WordMatcher from '../components/games/WordMatcher';
 import AIScenario from '../components/games/AIScenario';
 import { useAppTheme } from '../context/ThemeContext';
@@ -24,42 +26,28 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
   const { colors, isDarkMode } = useAppTheme();
   const [currentMission, setCurrentMission] = useState<string | null>(null);
   const [lessonWords, setLessonWords] = useState<any[]>([]);
+  const [currentLevel, setCurrentLevel] = useState(1);
+  const [currentExp, setCurrentExp] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const loadLessonWords = async () => {
-    // 1. Cargar hasta 3 palabras que el usuario está aprendiendo del Baúl
-    const vaultWords = await VaultService.getWords(userId);
-    const shuffledVault = vaultWords.sort(() => Math.random() - 0.5);
-    const learningWords = shuffledVault
-      .filter(w => w.status !== 'mastered')
-      .slice(0, 3);
-
-    // 2. Extraer del vocabulario base para enseñar palabras nuevas
-    const amountNeeded = 5 - learningWords.length;
-    let baseWords: any[] = [];
-    
-    const { data: baseVocab } = await supabase
-      .from('vocabulary')
-      .select('*')
-      .limit(20);
+    setIsGenerating(true);
+    try {
+      const exp = await MissionsService.getMatcherExp(userId);
+      const level = MissionsService.getLevelFromExp(exp);
+      setCurrentExp(exp);
+      setCurrentLevel(level);
       
-    if (baseVocab) {
-      // Filtrar palabras que el usuario ya tenga en el baúl (para no repetirlas)
-      const vaultEn = vaultWords.map(w => w.word_en.toLowerCase());
-      const filteredBase = baseVocab.filter(w => !vaultEn.includes(w.word_en.toLowerCase()));
-      baseWords = filteredBase.sort(() => Math.random() - 0.5).slice(0, amountNeeded);
+      const vaultWords = await VaultService.getWords(userId);
+      const vaultEn = vaultWords.map(w => w.word_en);
+      
+      const generated = await AITutorService.generateMatcherLevel(level, vaultEn);
+      setLessonWords(generated);
+    } catch (error) {
+      console.error("Error loading level words:", error);
+    } finally {
+      setIsGenerating(false);
     }
-
-    const combined = [...learningWords, ...baseWords];
-
-    const formatted = combined.map((w, index) => ({
-      id: w.id || index.toString(),
-      word: w.word_es,
-      translation: w.word_en,
-      matchId: index + 1,
-      inVault: learningWords.some(lw => lw.id === w.id)
-    }));
-    
-    setLessonWords(formatted);
   };
 
   const handleStartMission = (type: string) => {
@@ -80,11 +68,25 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
            <Ionicons name="arrow-back" size={24} color="#575fcf" />
            <Text style={styles.backText}>Volver</Text>
         </TouchableOpacity>
-        <WordMatcher 
-          words={lessonWords} 
-          userId={userId}
-          onComplete={(matched) => onComplete('word-matcher', matched)} 
-        />
+        
+        {isGenerating ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.accent} />
+            <Text style={[styles.loadingText, { color: colors.text }]}>Generando Nivel {currentLevel}...</Text>
+          </View>
+        ) : (
+          <WordMatcher 
+            words={lessonWords} 
+            userId={userId}
+            level={currentLevel}
+            exp={currentExp}
+            onComplete={async (matched) => {
+              await MissionsService.addMatcherExp(userId, 25); // +25 EXP por victoria
+              loadLessonWords();
+              onComplete('word-matcher', matched);
+            }} 
+          />
+        )}
       </View>
     );
   }
@@ -160,4 +162,6 @@ const styles = StyleSheet.create({
   missionDesc: { fontSize: 14, color: '#636e72', marginTop: 2 },
   backButton: { flexDirection: 'row', alignItems: 'center', padding: 20 },
   backText: { marginLeft: 8, fontSize: 16, fontWeight: '700', color: '#575fcf' },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 100 },
+  loadingText: { marginTop: 16, fontSize: 16, fontWeight: '700', opacity: 0.8 },
 });

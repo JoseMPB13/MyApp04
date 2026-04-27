@@ -1,9 +1,11 @@
 import { supabase } from './supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface StreakData {
   current_streak: number;
   max_streak: number;
   last_completion_date: string | null;
+  historical_streak?: number;
 }
 
 export const MissionsService = {
@@ -93,7 +95,55 @@ export const MissionsService = {
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (error) return null;
-    return data;
+    if (error || !data) return null;
+
+    const result = { ...data, historical_streak: data.current_streak };
+
+    if (data.last_completion_date) {
+      const yesterdayDate = new Date();
+      yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+      const yesterday = yesterdayDate.toISOString().split('T')[0];
+
+      if (data.last_completion_date < yesterday) {
+        // La racha expiró, sobrescribimos para la UI (la DB se actualizará al completar otra misión)
+        result.current_streak = 0;
+      }
+    }
+
+    return result;
+  },
+
+  /**
+   * Obtiene la experiencia actual del Matcher guardada en AsyncStorage.
+   */
+  async getMatcherExp(userId: string): Promise<number> {
+    try {
+      const val = await AsyncStorage.getItem(`matcher_exp_${userId}`);
+      if (val) return parseInt(val, 10);
+      return 0;
+    } catch {
+      return 0;
+    }
+  },
+
+  /**
+   * Añade experiencia al Matcher y la guarda.
+   */
+  async addMatcherExp(userId: string, amount: number): Promise<number> {
+    try {
+      const current = await MissionsService.getMatcherExp(userId);
+      const next = current + amount;
+      await AsyncStorage.setItem(`matcher_exp_${userId}`, next.toString());
+      return next;
+    } catch {
+      return 0;
+    }
+  },
+
+  /**
+   * Calcula el nivel a partir de la experiencia (100 EXP por nivel).
+   */
+  getLevelFromExp(exp: number): number {
+    return Math.floor(exp / 100) + 1;
   }
 };

@@ -20,6 +20,35 @@ export interface LessonResponse {
   nextGoal?: string;
 }
 
+export interface WordPair {
+  id: string;
+  word: string;
+  translation: string;
+  matchId: number;
+  inVault?: boolean;
+}
+
+const fetchGroq = async (messages: any[]) => {
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'llama-3.1-8b-instant',
+      messages: messages,
+      temperature: 0.7,
+      response_format: { type: 'json_object' }
+    }),
+  });
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error('No content in AI response');
+  return JSON.parse(content);
+};
+
 export const AITutorService = {
   categorizeVaultWord: async (wordEn: string, wordEs: string): Promise<string> => {
     if (!API_KEY) return 'General';
@@ -41,7 +70,7 @@ export const AITutorService = {
     `;
 
     try {
-      const data = await AITutorService.fetchGroq([{ role: 'system', content: systemPrompt }]);
+      const data = await fetchGroq([{ role: 'system', content: systemPrompt }]);
       return data.category || 'General';
     } catch (error) {
       console.error('AITutorService.categorizeVaultWord Error:', error);
@@ -63,7 +92,7 @@ export const AITutorService = {
     `;
 
     try {
-      const data = await AITutorService.fetchGroq([{ role: 'system', content: systemPrompt }]);
+      const data = await fetchGroq([{ role: 'system', content: systemPrompt }]);
       return data.topics || ['Presentarse', 'Pedir direcciones', 'Comprar algo'];
     } catch (error) {
       console.error('AITutorService.generateTopics Error:', error);
@@ -87,7 +116,7 @@ export const AITutorService = {
     `;
 
     try {
-      const data = await AITutorService.fetchGroq([{ role: 'system', content: systemPrompt }]);
+      const data = await fetchGroq([{ role: 'system', content: systemPrompt }]);
       return { 
         english: data.english || "Keep pushing forward!", 
         spanish: data.spanish || "¡Sigue avanzando!" 
@@ -98,6 +127,98 @@ export const AITutorService = {
         english: "Keep going, you're doing great!", 
         spanish: "¡Sigue así, lo estás haciendo genial!" 
       };
+    }
+  },
+
+  getMiniLesson: async (): Promise<{ title: string; explanation: string; exampleEn: string; exampleEs: string }> => {
+    if (!API_KEY) {
+      return {
+        title: "In / On / At",
+        explanation: "'In' es para espacios cerrados, 'On' para superficies y 'At' para puntos específicos.",
+        exampleEn: "I am in the car, on the street, at the corner.",
+        exampleEs: "Estoy en el coche, en la calle, en la esquina."
+      };
+    }
+    
+    const systemPrompt = `
+      Eres un coach de inglés. Genera una micro-lección aleatoria de inglés muy básica y útil (ej. diferencia entre in/on/at, un phrasal verb común, saludos informales, etc.).
+      
+      Devuelve ESTRICTAMENTE un JSON con este formato exacto:
+      {
+        "title": "Título corto",
+        "explanation": "Explicación muy breve en español",
+        "exampleEn": "Ejemplo corto en inglés",
+        "exampleEs": "Traducción del ejemplo al español"
+      }
+    `;
+
+    try {
+      const data = await fetchGroq([{ role: 'system', content: systemPrompt }]);
+      return {
+        title: data.title || "Mini Lección",
+        explanation: data.explanation || "¡Sigue practicando para mejorar!",
+        exampleEn: data.exampleEn || "Keep going!",
+        exampleEs: data.exampleEs || "¡Sigue adelante!"
+      };
+    } catch (error) {
+      console.error('AITutorService.getMiniLesson Error:', error);
+      return {
+        title: "In / On / At",
+        explanation: "'In' es para espacios cerrados, 'On' para superficies y 'At' para puntos específicos.",
+        exampleEn: "I am in the car, on the street, at the corner.",
+        exampleEs: "Estoy en el coche, en la calle, en la esquina."
+      };
+    }
+  },
+
+  generateMatcherLevel: async (level: number, vaultWords: string[]): Promise<WordPair[]> => {
+    let pairCount = 4;
+    let difficultyRule = "Genera 4 pares de palabras muy básicas.";
+
+    if (level >= 4 && level <= 7) {
+      pairCount = 5;
+      const mixRule = vaultWords.length >= 2 
+        ? "Mezcla al menos 2 palabras de las que ya conoce con 3 nuevas de nivel intermedio." 
+        : "Genera 5 pares de palabras de nivel intermedio.";
+      difficultyRule = mixRule;
+    } else if (level >= 8) {
+      pairCount = 6;
+      difficultyRule = "Genera 6 pares de palabras avanzadas o phrasal verbs.";
+    }
+
+    const systemPrompt = `
+      Eres un diseñador de niveles para un juego de emparejar palabras en inglés. 
+      El usuario está en el nivel ${level}. 
+      Las palabras que ya conoce son: [${vaultWords.join(', ')}].
+      
+      Regla de dificultad: ${difficultyRule}
+      
+      Devuelve ESTRICTAMENTE un JSON con el formato:
+      {
+        "pairs": [
+          { "word": "palabra_en_español", "translation": "palabra_en_inglés" }
+        ]
+      }
+    `;
+
+    try {
+      const data = await fetchGroq([{ role: 'system', content: systemPrompt }]);
+      
+      const rawPairs = data.pairs || [];
+      return rawPairs.map((p: any, index: number) => ({
+        id: `gen-${level}-${index}`,
+        matchId: index + 1,
+        word: p.word,
+        translation: p.translation
+      }));
+    } catch (error) {
+      console.error('AITutorService.generateMatcherLevel Error:', error);
+      return [
+        { id: 'f1', matchId: 1, word: 'hola', translation: 'hello' },
+        { id: 'f2', matchId: 2, word: 'adiós', translation: 'goodbye' },
+        { id: 'f3', matchId: 3, word: 'gracias', translation: 'thank you' },
+        { id: 'f4', matchId: 4, word: 'por favor', translation: 'please' }
+      ];
     }
   },
 
@@ -156,7 +277,7 @@ export const AITutorService = {
     ];
 
     try {
-      const data = await AITutorService.fetchGroq(formattedMessages);
+      const data = await fetchGroq(formattedMessages);
       return data as LessonResponse;
     } catch (error) {
       console.error('AITutorService Error:', error);
@@ -173,24 +294,5 @@ export const AITutorService = {
     }
   },
 
-  fetchGroq: async (messages: any[]) => {
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages: messages,
-        temperature: 0.7,
-        response_format: { type: 'json_object' }
-      }),
-    });
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error('No content in AI response');
-    return JSON.parse(content);
-  }
+  fetchGroq
 };

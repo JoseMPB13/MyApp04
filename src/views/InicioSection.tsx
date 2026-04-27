@@ -10,6 +10,7 @@ import {
 import { StreakData } from '../api/missions';
 import { AITutorService } from '../api/ai_tutor';
 import { useAppTheme } from '../context/ThemeContext';
+import { useUser } from '../context/UserContext';
 import { StreakPanel } from '../components/common/StreakPanel';
 
 const getGreeting = () => {
@@ -20,14 +21,15 @@ const getGreeting = () => {
 };
 
 export default function InicioSection({ streak, user }: { streak: StreakData | null, user: any }) {
-  const { colors, username } = useAppTheme();
-  const [dailyTip, setDailyTip] = useState<{english: string, spanish: string} | null>(null);
-  const [loadingTip, setLoadingTip] = useState(true);
+  const { colors } = useAppTheme();
+  const { username } = useUser();
+  const [miniLesson, setMiniLesson] = useState<{title: string, explanation: string, exampleEn: string, exampleEs: string} | null>(null);
+  const [loadingLesson, setLoadingLesson] = useState(true);
 
   useEffect(() => {
-    AITutorService.getDailyTip().then(tip => {
-      setDailyTip(tip);
-      setLoadingTip(false);
+    AITutorService.getMiniLesson().then(lesson => {
+      setMiniLesson(lesson);
+      setLoadingLesson(false);
     });
   }, []);
 
@@ -47,16 +49,20 @@ export default function InicioSection({ streak, user }: { streak: StreakData | n
         </View>
         <View style={[styles.chatBubble, styles.cardShadow, { backgroundColor: colors.card }]}>
           <Text style={[styles.coachName, { color: colors.accent }]}>Coach Raccoon</Text>
-          {loadingTip ? (
+          {loadingLesson ? (
             <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
           ) : (
             <>
-              <Text style={[styles.coachMsg, { fontWeight: 'bold', color: colors.text }]}>
-                &quot;{dailyTip?.english}&quot;
+              <Text style={[styles.lessonTitle, { color: colors.accent }]}>
+                {miniLesson?.title}
               </Text>
-              <Text style={[styles.coachMsg, { marginTop: 4, fontSize: 13, color: colors.text, opacity: 0.8 }]}>
-                {dailyTip?.spanish}
+              <Text style={[styles.coachMsg, { color: colors.text }]}>
+                {miniLesson?.explanation}
               </Text>
+              <View style={[styles.exampleBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Text style={[styles.exampleEn, { color: colors.text }]}>&quot;{miniLesson?.exampleEn}&quot;</Text>
+                <Text style={[styles.exampleEs, { color: colors.text }]}>{miniLesson?.exampleEs}</Text>
+              </View>
             </>
           )}
         </View>
@@ -80,4 +86,8 @@ const styles = StyleSheet.create({
   chatBubble: { flex: 1, marginLeft: 16, backgroundColor: '#FFF', padding: 18, borderRadius: 22, borderTopLeftRadius: 4, minHeight: 80 },
   coachName: { fontWeight: '900', color: '#575fcf', marginBottom: 6, fontSize: 15 },
   coachMsg: { color: '#485460', fontSize: 14, lineHeight: 22, fontWeight: '500' },
+  lessonTitle: { fontWeight: 'bold', fontSize: 15, marginBottom: 4 },
+  exampleBox: { marginTop: 12, padding: 10, borderRadius: 8, borderWidth: 1 },
+  exampleEn: { fontWeight: 'bold', fontSize: 13, fontStyle: 'italic', marginBottom: 2 },
+  exampleEs: { fontSize: 12, opacity: 0.8 },
 });

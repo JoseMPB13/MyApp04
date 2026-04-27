@@ -22,9 +22,7 @@ export const Colors = {
 export const ThemeContext = createContext({
   isDarkMode: false,
   toggleTheme: () => {},
-  colors: Colors.light,
-  username: '',
-  updateUsername: (name: string) => {}
+  colors: Colors.light
 });
 
 export const useAppTheme = () => useContext(ThemeContext);
@@ -32,7 +30,6 @@ export const useAppTheme = () => useContext(ThemeContext);
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   const systemAuth = useColorScheme();
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [username, setUsername] = useState('');
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -42,6 +39,10 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
       } else {
         setIsDarkMode(systemAuth === 'dark');
       }
+    }).catch((error) => {
+      console.error('Error reading theme from AsyncStorage:', error);
+      setIsDarkMode(systemAuth === 'dark');
+    }).finally(() => {
       setIsLoaded(true);
     });
   }, [systemAuth]);
@@ -59,7 +60,7 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   if (!isLoaded) return null;
 
   return (
-    <ThemeContext.Provider value={{ isDarkMode, toggleTheme, colors, username, updateUsername: setUsername }}>
+    <ThemeContext.Provider value={{ isDarkMode, toggleTheme, colors }}>
       {children}
     </ThemeContext.Provider>
   );

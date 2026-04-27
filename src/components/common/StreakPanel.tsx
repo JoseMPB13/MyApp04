@@ -19,7 +19,11 @@ const MONTHS_NAMES = [
 ];
 
 const isCompleted = (date: Date, streak: StreakData | null) => {
-  if (!streak || !streak.last_completion_date || streak.current_streak === 0) return false;
+  if (!streak || !streak.last_completion_date) return false;
+  
+  const activeStreak = streak.historical_streak ?? streak.current_streak;
+  if (activeStreak === 0) return false;
+
   const [year, month, day] = streak.last_completion_date.split('-').map(Number);
   const lastDate = new Date(year, month - 1, day);
   const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -29,7 +33,7 @@ const isCompleted = (date: Date, streak: StreakData | null) => {
   const diffTime = lastDate.getTime() - target.getTime();
   const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
   
-  return diffDays >= 0 && diffDays < streak.current_streak;
+  return diffDays >= 0 && diffDays < activeStreak;
 };
 
 export const StreakPanel = ({ streak }: { streak: StreakData | null }) => {

@@ -34,10 +34,14 @@ interface Card {
 export default function WordMatcher({ 
   words = [], 
   userId,
+  level,
+  exp,
   onComplete 
 }: { 
   words: WordPair[], 
   userId: string,
+  level: number,
+  exp: number,
   onComplete: (matchedWords: WordPair[]) => void 
 }) {
   const { colors, isDarkMode } = useAppTheme();
@@ -199,8 +203,15 @@ export default function WordMatcher({
   if (showSummary) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Text style={[styles.titleSuccess, isDarkMode && { color: '#2ed573' }]}>¡Nivel Completado! 🎉</Text>
-        <Text style={[styles.subtitle, { color: colors.text, opacity: 0.7 }]}>Has emparejado las 5 palabras. Guárdalas en tu baúl para no olvidarlas.</Text>
+        <Text style={[styles.titleSuccess, isDarkMode && { color: '#2ed573' }]}>¡Victoria! 🎉</Text>
+        <View style={styles.expContainer}>
+          <Text style={[styles.expText, { color: colors.text }]}>Nivel {level} • {exp % 100}/100 EXP</Text>
+          <View style={[styles.progressBarBg, { backgroundColor: colors.border }]}>
+            <View style={[styles.progressBarFill, { width: `${exp % 100}%`, backgroundColor: colors.accent }]} />
+          </View>
+          <Text style={styles.expGainText}>+25 EXP ganados</Text>
+        </View>
+        <Text style={[styles.subtitle, { color: colors.text, opacity: 0.7 }]}>Has emparejado las palabras correctamente. Guárdalas en tu baúl para no olvidarlas.</Text>
         
         <ScrollView style={{ width: '100%', marginTop: 10 }}>
           {words.map(w => {
@@ -243,7 +254,7 @@ export default function WordMatcher({
           style={[styles.primaryBtn, styles.cardShadow, { backgroundColor: colors.accent }]} 
           onPress={() => onComplete(words)}
         >
-          <Text style={styles.primaryBtnText}>Continuar</Text>
+          <Text style={styles.primaryBtnText}>Siguiente Nivel</Text>
         </TouchableOpacity>
       </View>
     );
@@ -252,7 +263,7 @@ export default function WordMatcher({
   // GAME RENDER
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.title, { color: colors.text }]}>Empareja las palabras</Text>
+      <Text style={[styles.title, { color: colors.text }]}>Nivel {level} - Empareja</Text>
       
       <View style={styles.columnsContainer}>
         {/* Spanish Column */}
@@ -373,4 +384,9 @@ const styles = StyleSheet.create({
       web: { boxShadow: '0px 4px 8px rgba(0,0,0,0.1)' }
     })
   },
+  expContainer: { width: '100%', alignItems: 'center', marginVertical: 15 },
+  expText: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
+  progressBarBg: { width: '80%', height: 10, borderRadius: 5, overflow: 'hidden' },
+  progressBarFill: { height: '100%' },
+  expGainText: { fontSize: 12, fontWeight: '600', color: '#2ed573', marginTop: 5 },
 });
