@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -47,13 +47,15 @@ export default function WordMatcher({
   userId,
   level,
   exp,
-  onComplete 
+  onNextLevel,
+  onExit
 }: { 
   words: WordPair[], 
   userId: string,
   level: number,
   exp: number,
-  onComplete: (matchedWords: WordPair[], maxCombo: number) => void 
+  onNextLevel: (matchedWords: WordPair[], maxCombo: number) => void,
+  onExit: (matchedWords: WordPair[], maxCombo: number) => void
 }) {
   const { colors, isDarkMode } = useAppTheme();
   const [esCards, setEsCards] = useState<Card[]>([]);
@@ -72,11 +74,14 @@ export default function WordMatcher({
 
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
-  const timeoutRefs = useRef<NodeJS.Timeout[]>([]);
+  const [lives, setLives] = useState(3);
+  const [showGameOver, setShowGameOver] = useState(false);
+  const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
+    const refs = timeoutRefs.current;
     return () => {
-      timeoutRefs.current.forEach(clearTimeout);
+      refs.forEach(clearTimeout);
     };
   }, []);
 
@@ -86,9 +91,19 @@ export default function WordMatcher({
     return id;
   };
 
-  // Initialize
-  useEffect(() => {
+  const initGame = useCallback(() => {
     if (words.length === 0) return;
+    
+    setLives(3);
+    setCombo(0);
+    setMaxCombo(0);
+    setMatchedIds([]);
+    setWrongEs(null);
+    setWrongEn(null);
+    setShowSummary(false);
+    setShowGameOver(false);
+    setSelectedEs(null);
+    setSelectedEn(null);
 
     const esList: Card[] = [];
     const enList: Card[] = [];
@@ -107,6 +122,11 @@ export default function WordMatcher({
     setSavedWords(alreadySaved);
   }, [words]);
 
+  // Initialize
+  useEffect(() => {
+    initGame();
+  }, [initGame]);
+
   // Main Matching Logic
   useEffect(() => {
     if (selectedEs && selectedEn) {
@@ -115,6 +135,7 @@ export default function WordMatcher({
         setCombo(prev => {
           const newCombo = prev + 1;
           setMaxCombo(m => Math.max(m, newCombo));
+          console.log("🟢 [MATCHER] ¡MATCH Exitoso! ID:", selectedEs.matchId, "| Combo actual:", newCombo);
           return newCombo;
         });
         const mId = selectedEs.matchId;
@@ -134,6 +155,7 @@ export default function WordMatcher({
         
       } else {
         // ERROR
+        console.log("🔴 [MATCHER] ERROR al emparejar. Combo reseteado a 0.");
         setCombo(0);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         const wEs = selectedEs;
@@ -142,6 +164,14 @@ export default function WordMatcher({
         setWrongEn(wEn);
         setSelectedEs(null);
         setSelectedEn(null);
+        
+        setLives(prev => {
+          const next = prev - 1;
+          if (next <= 0) {
+            safeSetTimeout(() => setShowGameOver(true), 600);
+          }
+          return next;
+        });
         
         safeSetTimeout(() => {
           setWrongEs(null);
@@ -155,10 +185,15 @@ export default function WordMatcher({
     // If it's already matched, or wait state is active
     if (matchedIds.includes(card.matchId) || (wrongEs !== null)) return;
 
+    console.log("👆 [MATCHER] Carta seleccionada:", card.type, card.content);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     if (card.type === 'en') {
-      Speech.speak(card.content, { language: 'en-US' });
+      try {
+        Speech.speak(card.content, { language: 'en-US' });
+      } catch (error) {
+        console.warn('Speech Error:', error);
+      }
     }
     
     if (card.type === 'es') {
@@ -287,11 +322,70 @@ export default function WordMatcher({
           })}
         </ScrollView>
 
+        <View style={styles.actionButtonsContainer}>
+          <TouchableOpacity 
+            style={[styles.primaryBtn, styles.cardShadow, { backgroundColor: colors.accent, flex: 1, marginRight: 8 }]} 
+            onPress={() => {
+              console.log("⏭️ [MATCHER] Siguiente nivel presionado. Max Combo fue:", maxCombo);
+              onNextLevel(words, maxCombo);
+            }}
+          >
+            <Text style={styles.primaryBtnText}>Siguiente Nivel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.secondaryBtn, { flex: 1, marginLeft: 8 }]} 
+            onPress={() => onExit(words, maxCombo)}
+          >
+            <Text style={[styles.secondaryBtnText, { color: colors.text }]}>Volver a Misiones</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const renderHUD = () => (
+    <View style={styles.hudContainer}>
+      <View style={styles.hudLeft}>
+        <Text style={[styles.hudLevelText, { color: colors.text }]}>Nivel {level}</Text>
+        <View style={[styles.hudProgressBg, { backgroundColor: colors.border }]}>
+          <View style={[styles.hudProgressFill, { width: `${exp % 100}%`, backgroundColor: colors.accent }]} />
+        </View>
+      </View>
+
+      <View style={styles.hudCenter}>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Ionicons 
+            key={`heart-${i}`} 
+            name={i < lives ? "heart" : "heart-outline"} 
+            size={24} 
+            color="#ff4757" 
+            style={{ marginHorizontal: 2 }}
+          />
+        ))}
+      </View>
+
+      <View style={styles.hudRight}>
+        <Text style={[styles.hudComboText, { color: combo > 1 ? colors.accent : 'transparent' }]}>
+          🔥 x{combo}
+        </Text>
+      </View>
+    </View>
+  );
+
+  if (showGameOver) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center' }]}>
+        <Ionicons name="skull" size={80} color="#ff4757" style={{ marginBottom: 20 }} />
+        <Text style={[styles.titleSuccess, { color: '#ff4757' }]}>Nivel Fallido</Text>
+        <Text style={[styles.subtitle, { color: colors.text, opacity: 0.7 }]}>
+          Te has quedado sin vidas. ¡Concéntrate y vuelve a intentarlo!
+        </Text>
+        
         <TouchableOpacity 
-          style={[styles.primaryBtn, styles.cardShadow, { backgroundColor: colors.accent }]} 
-          onPress={() => onComplete(words, maxCombo)}
+          style={[styles.primaryBtn, styles.cardShadow, { backgroundColor: colors.accent, marginTop: 40 }]} 
+          onPress={initGame}
         >
-          <Text style={styles.primaryBtnText}>Siguiente Nivel</Text>
+          <Text style={styles.primaryBtnText}>Reintentar Nivel</Text>
         </TouchableOpacity>
       </View>
     );
@@ -299,7 +393,7 @@ export default function WordMatcher({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.title, { color: colors.text }]}>Nivel {level} - Empareja</Text>
+      {renderHUD()}
       
       <View style={styles.columnsContainer}>
         {/* English Column (Left) */}
@@ -318,6 +412,46 @@ export default function WordMatcher({
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, alignItems: 'center' },
+  
+  hudContainer: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 8,
+  },
+  hudLeft: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  hudLevelText: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  hudProgressBg: {
+    width: 60,
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  hudProgressFill: {
+    height: '100%',
+  },
+  hudCenter: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  hudRight: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  hudComboText: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
   title: { fontSize: 24, fontWeight: '900', color: '#1e272e', marginBottom: 20 },
   titleSuccess: { fontSize: 26, fontWeight: '900', color: '#05c46b', marginBottom: 8, marginTop: 20 },
   subtitle: { fontSize: 16, color: '#7f8c8d', marginBottom: 20, textAlign: 'center', paddingHorizontal: 10 },
@@ -392,12 +526,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 18,
     borderRadius: 20,
-    width: '100%',
     alignItems: 'center',
+  },
+  primaryBtnText: { color: '#FFF', fontSize: 18, fontWeight: '900' },
+  
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
     marginTop: 20,
     marginBottom: 40,
   },
-  primaryBtnText: { color: '#FFF', fontSize: 18, fontWeight: '900' },
+  secondaryBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  secondaryBtnText: { fontSize: 16, fontWeight: '800' },
   
   inVaultBadge: {
     backgroundColor: 'rgba(5, 196, 107, 0.1)',

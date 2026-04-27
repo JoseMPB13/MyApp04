@@ -29,24 +29,29 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
   const [currentLevel, setCurrentLevel] = useState(1);
   const [currentExp, setCurrentExp] = useState(0);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [recentWords, setRecentWords] = useState<string[]>([]);
 
-  const loadLessonWords = async () => {
+  const loadLessonWords = async (overrideRecent?: string[]) => {
     setIsGenerating(true);
     try {
       const exp = await MissionsService.getMatcherExp(userId);
       const level = MissionsService.getLevelFromExp(exp);
       setCurrentExp(exp);
       setCurrentLevel(level);
+      console.log("🚀 [ACTIVITIES] Iniciando carga de palabras. Exp:", exp, "Nivel:", level);
       
+      const currentRecent = overrideRecent || recentWords;
       const vaultWords = await VaultService.getWords(userId);
       const vaultEn = vaultWords.map(w => w.word_en.toLowerCase());
+      const shuffledVault = [...vaultEn].sort(() => Math.random() - 0.5).slice(0, 5);
       
-      const generated = await AITutorService.generateMatcherLevel(level, vaultEn);
+      const generated = await AITutorService.generateMatcherLevel(level, shuffledVault, currentRecent);
       
       const mappedGenerated = generated.map((word: any) => ({
         ...word,
         inVault: vaultEn.includes(word.translation.toLowerCase())
       }));
+      console.log("📦 [ACTIVITIES] Palabras listas para jugar:", mappedGenerated);
       setLessonWords(mappedGenerated);
     } catch (error) {
       console.error("Error loading level words:", error);
@@ -85,10 +90,18 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
             userId={userId}
             level={currentLevel}
             exp={currentExp}
-            onComplete={async (matched, maxCombo) => {
+            onNextLevel={async (matched, maxCombo) => {
               const expGain = 25 + (maxCombo * 5);
               await MissionsService.addMatcherExp(userId, expGain);
-              loadLessonWords();
+              const newRecent = [...recentWords, ...matched.map(w => w.translation.toLowerCase())].slice(-25);
+              setRecentWords(newRecent);
+              loadLessonWords(newRecent);
+            }}
+            onExit={async (matched, maxCombo) => {
+              const expGain = 25 + (maxCombo * 5);
+              await MissionsService.addMatcherExp(userId, expGain);
+              setCurrentMission(null);
+              onMissionStateChange(false);
               onComplete('word-matcher', { matched, expGain });
             }} 
           />

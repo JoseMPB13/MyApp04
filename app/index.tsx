@@ -112,7 +112,7 @@ export default function HomeScreen() {
     if (result.success) {
       loadGlobalData();
       handleMissionStateChange(false);
-      setActiveTab('inicio');
+      setActiveTab('activities');
     }
   };
 

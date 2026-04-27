@@ -28,7 +28,7 @@ export interface WordPair {
   inVault?: boolean;
 }
 
-const fetchGroq = async (messages: any[]) => {
+const fetchGroq = async (messages: any[], temperature: number = 0.7) => {
   const response = await fetch(API_URL, {
     method: 'POST',
     headers: {
@@ -38,7 +38,7 @@ const fetchGroq = async (messages: any[]) => {
     body: JSON.stringify({
       model: 'llama-3.1-8b-instant',
       messages: messages,
-      temperature: 0.7,
+      temperature: temperature,
       response_format: { type: 'json_object' }
     }),
   });
@@ -48,6 +48,31 @@ const fetchGroq = async (messages: any[]) => {
   if (!content) throw new Error('No content in AI response');
   return JSON.parse(content);
 };
+
+const FALLBACK_WORDS = [
+  { word: 'casa', translation: 'house' },
+  { word: 'perro', translation: 'dog' },
+  { word: 'gato', translation: 'cat' },
+  { word: 'árbol', translation: 'tree' },
+  { word: 'coche', translation: 'car' },
+  { word: 'sol', translation: 'sun' },
+  { word: 'luna', translation: 'moon' },
+  { word: 'agua', translation: 'water' },
+  { word: 'fuego', translation: 'fire' },
+  { word: 'tierra', translation: 'earth' },
+  { word: 'cielo', translation: 'sky' },
+  { word: 'nube', translation: 'cloud' },
+  { word: 'lluvia', translation: 'rain' },
+  { word: 'nieve', translation: 'snow' },
+  { word: 'viento', translation: 'wind' },
+  { word: 'montaña', translation: 'mountain' },
+  { word: 'río', translation: 'river' },
+  { word: 'mar', translation: 'sea' },
+  { word: 'playa', translation: 'beach' },
+  { word: 'bosque', translation: 'forest' },
+  { word: 'flor', translation: 'flower' },
+  { word: 'hoja', translation: 'leaf' }
+];
 
 export const AITutorService = {
   categorizeVaultWord: async (wordEn: string, wordEs: string): Promise<string> => {
@@ -171,7 +196,11 @@ export const AITutorService = {
     }
   },
 
-  generateMatcherLevel: async (level: number, vaultWords: string[]): Promise<WordPair[]> => {
+  generateMatcherLevel: async (level: number, vaultWords: string[], recentWords: string[] = []): Promise<WordPair[]> => {
+    const themes = ["Comida y Bebida", "Animales Salvajes", "Profesiones", "Tecnología", "Viajes", "Ropa", "Deportes", "Hogar", "Cuerpo Humano", "Arte y Música"];
+    const randomTheme = themes[Math.floor(Math.random() * themes.length)];
+    console.log("🎯 [AI_TUTOR] Tema forzado para esta partida:", randomTheme);
+
     let pairCount = 3;
     let difficultyRule = "";
 
@@ -187,23 +216,35 @@ export const AITutorService = {
     }
 
     const systemPrompt = `
-      Eres un experto diseñador de niveles educativos para aprender inglés.
-      Tu tarea es generar un set de palabras para un juego de emparejar.
-      Nivel del usuario: ${level}.
-      
-      REGLA CRÍTICA: ${difficultyRule}
-      
-      FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
-      {
-        "pairs": [
-          { "word": "palabra_en_español", "translation": "palabra_en_inglés" }
-        ]
-      }
-    `;
+Eres un generador de vocabulario para nivel A1-B2 de inglés.
+REGLA CRÍTICA DE DIFICULTAD: ${difficultyRule}
+
+REGLAS ABSOLUTAS:
+1. TEMA OBLIGATORIO: Todas las palabras NUEVAS que generes DEBEN estar relacionadas estrictamente con la categoría: '${randomTheme}'. No uses vocabulario de familia o mascotas a menos que ese sea el tema.
+2. NO INVENTES PALABRAS. Usa únicamente sustantivos, verbos o adjetivos básicos y reales del diccionario Oxford.
+3. TRADUCCIÓN ÚNICA. La traducción al español debe ser una sola palabra exacta (ej. NO "madrina, tía", solo "Madrina").
+4. FORMATO DE TEXTO: Solo la primera letra debe ser mayúscula, el resto en minúscula. NUNCA uses todo en mayúsculas.
+5. HISTORIAL PROHIBIDO: No generes estas palabras: [${recentWords.join(', ')}].
+
+EJEMPLOS DE LO QUE DEBES DEVOLVER:
+CORRECTO: { "word": "Abuela", "translation": "Grandmother" }
+CORRECTO: { "word": "Manzana", "translation": "Apple" }
+INCORRECTO (No usar): { "word": "ABUELA", "translation": "GRANDMOTHER" } -> (Error: Todo mayúsculas)
+INCORRECTO (No usar): { "word": "Madrina", "translation": "Goodmother" } -> (Error: Palabra inventada)
+
+FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
+{
+  "pairs": [
+    { "word": "palabra_en_español", "translation": "palabra_en_inglés" }
+  ]
+}
+`;
 
     try {
-      const data = await fetchGroq([{ role: 'system', content: systemPrompt }]);
+      console.log("🧠 [AI_TUTOR] Solicitando pares. Nivel:", level, "| Evitando:", recentWords);
+      const data = await fetchGroq([{ role: 'system', content: systemPrompt }], 0.1);
       const rawPairs = data.pairs || [];
+      console.log("✅ [AI_TUTOR] Respuesta cruda de Groq:", JSON.stringify(rawPairs));
       
       // Limitar al pairCount solicitado por si la IA se excede
       return rawPairs.slice(0, pairCount).map((p: any, index: number) => ({
@@ -214,12 +255,18 @@ export const AITutorService = {
       }));
     } catch (error) {
       console.error('AITutorService.generateMatcherLevel Error:', error);
-      // Fallback: 3 pares básicos por defecto
-      return [
-        { id: 'f1', matchId: 1, word: 'casa', translation: 'house' },
-        { id: 'f2', matchId: 2, word: 'perro', translation: 'dog' },
-        { id: 'f3', matchId: 3, word: 'gato', translation: 'cat' }
-      ];
+      // Fallback dinámico aleatorio sin repetir recientes
+      const availableFallback = FALLBACK_WORDS.filter(
+        w => !recentWords.includes(w.translation.toLowerCase()) && !recentWords.includes(w.word.toLowerCase())
+      );
+      const pool = availableFallback.length >= pairCount ? availableFallback : FALLBACK_WORDS;
+      const shuffledFallback = [...pool].sort(() => Math.random() - 0.5);
+      return shuffledFallback.slice(0, pairCount).map((p: any, index: number) => ({
+        id: `f-${level}-${index}-${Date.now()}`,
+        matchId: index + 1,
+        word: p.word,
+        translation: p.translation
+      }));
     }
   },
 
