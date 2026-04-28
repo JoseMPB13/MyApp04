@@ -26,6 +26,27 @@ import { useAppTheme } from '../../context/ThemeContext';
 
 type Phase = 'SELECT_CATEGORY' | 'SELECT_TOPIC' | 'CHAT';
 
+/**
+ * Elimina emojis, caracteres especiales y bloques no-ASCII que rompen
+ * los motores TTS nativos de iOS y Android.
+ */
+const cleanTextForSpeech = (rawText: string): string => {
+  return rawText
+    // Eliminar emojis y símbolos Unicode extendidos
+    .replace(/[\u{1F000}-\u{1FFFF}]/gu, '')
+    .replace(/[\u{2700}-\u{27BF}]/gu, '')
+    .replace(/[\u{FE00}-\u{FE0F}]/gu, '')
+    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
+    // Eliminar caracteres de control y bloques especiales
+    .replace(/[\u0080-\u009F]/g, '')
+    // Eliminar corchetes con instrucciones internas tipo [INSTRUCCIÓN...]
+    .replace(/\[.*?\]/g, '')
+    // Conservar solo texto, puntuación básica y espacios
+    .replace(/[^\w\s.,!?;:'\-()]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 interface Message {
   id: string;
   text: string;
@@ -110,6 +131,9 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
   const [visibleTranslations, setVisibleTranslations] = useState<{[key: string]: boolean}>({});
   const [currentHint, setCurrentHint] = useState<string | null>(null);
   const [showHintModal, setShowHintModal] = useState(false);
+  const [perfectGrammarMsgId, setPerfectGrammarMsgId] = useState<string | null>(null);
+  const [bonusExpVisible, setBonusExpVisible] = useState(false);
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
 
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
@@ -177,7 +201,10 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
         translation: iceBreaker.translation,
       };
       setMessages([firstMsg]);
-      if (iceBreaker.nextGoal) setCurrentHint(iceBreaker.nextGoal);
+      if (iceBreaker.suggested_reply) {
+        setCurrentHint(iceBreaker.suggested_reply);
+      }
+      console.log("\ud83d\udfe2 [CHAT] Ice-Breaker generado exitosamente");
     } catch {
       // Fallback estático si la IA falla
       const fallbackText = vaultWords.length === 0
@@ -221,9 +248,21 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
         feedback: response.feedbackCapsule
       };
 
+      // Detección de gramática perfecta
+      const grammar = response.feedbackCapsule?.grammar?.toLowerCase() ?? '';
+      const isPerfect = grammar.includes('perfecto') || grammar.includes('excelente') || grammar.includes('correcto') || grammar.includes('sin errores');
+      if (isPerfect) {
+        setPerfectGrammarMsgId(userMsg.id);
+        setBonusExpVisible(true);
+        console.log("\ud83d\udfe3 [CHAT] Gramática perfecta detectada, otorgando bonus de EXP");
+        setTimeout(() => setBonusExpVisible(false), 3000);
+      } else {
+        setPerfectGrammarMsgId(null);
+      }
+
       setMessages(prev => [...prev, aiMsg]);
       setTurnCount(prev => prev + 1);
-      if (response.nextGoal) setCurrentHint(response.nextGoal);
+      if (response.suggested_reply) setCurrentHint(response.suggested_reply);
       else setCurrentHint(null);
     } catch (error) {
       console.error("AI Lesson Error:", error);
@@ -332,18 +371,39 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
               
               <View style={[
                 styles.bubble,
-                m.sender === 'user' ? [styles.userBubble, { backgroundColor: colors.accent }] : [styles.aiBubble, { backgroundColor: colors.card }]
+                m.sender === 'user'
+                  ? [styles.userBubble, { backgroundColor: colors.accent }, perfectGrammarMsgId === m.id && styles.perfectBubble]
+                  : [styles.aiBubble, { backgroundColor: colors.card }]
               ]}>
                 {m.sender === 'ai' && (
                   <TouchableOpacity 
-                    style={styles.speakerIcon} 
+                    style={[styles.speakerIcon, speakingMsgId === m.id && { opacity: 1 }]} 
                     onPress={() => {
+                      const cleanText = cleanTextForSpeech(m.text);
+                      console.log("\ud83d\udd0a [SPEECH] Solicitando audio para:", cleanText);
                       Speech.stop();
-                      Speech.speak(m.text, { language: 'en-US', pitch: 1.0, rate: 0.9 });
+                      setSpeakingMsgId(m.id);
+                      setTimeout(() => {
+                        Speech.speak(cleanText, { 
+                          language: 'en-US', 
+                          pitch: 1.0, 
+                          rate: 0.85,
+                          onDone: () => setSpeakingMsgId(null),
+                          onError: () => setSpeakingMsgId(null),
+                          onStopped: () => setSpeakingMsgId(null),
+                        });
+                      }, 100);
                     }}
                   >
-                    <Ionicons name="volume-medium" size={18} color={colors.accent} />
+                    <Ionicons 
+                      name={speakingMsgId === m.id ? 'volume-high' : 'volume-medium'} 
+                      size={18} 
+                      color={speakingMsgId === m.id ? '#05c46b' : colors.accent} 
+                    />
                   </TouchableOpacity>
+                )}
+                {m.sender === 'user' && perfectGrammarMsgId === m.id && (
+                  <Text style={styles.perfectLabel}>✨ Perfecto</Text>
                 )}
                 <Text style={m.sender === 'user' ? styles.messageText : [styles.aiMessageText, { color: colors.text }]}>
                   {m.text}
@@ -381,18 +441,26 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
 
         {turnCount <= 5 && (
           <View>
-            {showHintModal && currentHint && (
-              <TouchableOpacity 
-                style={[styles.hintModal, { backgroundColor: isDarkMode ? '#281a3a' : '#f8f4ff', borderColor: isDarkMode ? '#4b2c6e' : '#ddd2f8' }]}
-                onPress={() => setShowHintModal(false)}
-              >
-                <View style={styles.hintModalHeader}>
-                  <Ionicons name="bulb" size={16} color="#f1c40f" />
-                  <Text style={[styles.hintModalLabel, { color: colors.accent }]}>Podrías decir...</Text>
-                  <Ionicons name="close" size={16} color={colors.text} style={{ opacity: 0.4, marginLeft: 'auto' }} />
-                </View>
-                <Text style={[styles.hintModalText, { color: colors.text }]}>{currentHint}</Text>
-              </TouchableOpacity>
+            {bonusExpVisible && (
+              <View style={styles.bonusExpBanner}>
+                <Text style={styles.bonusExpText}>✨ +5 EXP · Gramática Perfecta</Text>
+              </View>
+            )}
+            {currentHint && (
+              <View style={[styles.hintInline, { backgroundColor: isDarkMode ? '#1e1a2e' : '#f3eeff', borderColor: isDarkMode ? '#4b2c6e' : '#ddd2f8' }]}>
+                <Ionicons name="bulb" size={14} color="#f1c40f" />
+                <Text style={[styles.hintInlineText, { color: colors.text }]} numberOfLines={2}>{currentHint}</Text>
+                <TouchableOpacity
+                  style={styles.hintInjectBtn}
+                  onPress={() => {
+                    console.log("\ud83d\udfe1 [CHAT] Pista inyectada en el input:", currentHint);
+                    setInputText(currentHint ?? '');
+                    inputRef.current?.focus();
+                  }}
+                >
+                  <Text style={styles.hintInjectLabel}>Usar</Text>
+                </TouchableOpacity>
+              </View>
             )}
             <View style={[styles.inputArea, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
               <TextInput
@@ -405,12 +473,18 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
                 multiline
                 editable={!loading}
               />
-              <TouchableOpacity 
-                style={[styles.hintButton, { backgroundColor: isDarkMode ? '#2c2c2c' : '#F0F2F5', borderColor: colors.border }]}
-                onPress={() => setShowHintModal(prev => !prev)}
-              >
-                <Ionicons name="bulb" size={24} color="#f1c40f" />
-              </TouchableOpacity>
+              {currentHint && (
+                <TouchableOpacity 
+                  style={[styles.hintButton, { backgroundColor: isDarkMode ? '#2c2c2c' : '#F0F2F5', borderColor: colors.border }]}
+                  onPress={() => {
+                    console.log("\ud83d\udfe1 [CHAT] Pista inyectada en el input:", currentHint);
+                    setInputText(currentHint ?? '');
+                    inputRef.current?.focus();
+                  }}
+                >
+                  <Ionicons name="bulb" size={24} color="#f1c40f" />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity 
                 style={[styles.sendButton, loading && { opacity: 0.5 }]} 
                 onPress={sendMessage}
@@ -569,6 +643,36 @@ const styles = StyleSheet.create({
   completionTitle: { fontSize: 24, fontWeight: '900', color: '#05c46b', marginBottom: 24 },
   primaryBtn: { backgroundColor: '#575fcf', paddingHorizontal: 24, paddingVertical: 16, borderRadius: 20, width: '100%', alignItems: 'center' },
   primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '900' },
+
+  // Perfect grammar reward
+  perfectBubble: { borderWidth: 2, borderColor: '#2ed573' },
+  perfectLabel: { fontSize: 11, fontWeight: '800', color: '#2ed573', marginBottom: 4 },
+  bonusExpBanner: {
+    marginHorizontal: 12,
+    marginBottom: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: '#05c46b',
+    alignItems: 'center',
+  },
+  bonusExpText: { color: '#FFF', fontSize: 14, fontWeight: '900' },
+
+  // Hint inline bar
+  hintInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1.5,
+  },
+  hintInlineText: { flex: 1, fontSize: 13, fontWeight: '600', opacity: 0.85 },
+  hintInjectBtn: { backgroundColor: '#575fcf', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
+  hintInjectLabel: { color: '#FFF', fontSize: 12, fontWeight: '800' },
 
   speakerIcon: {
     position: 'absolute',

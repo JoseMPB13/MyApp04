@@ -16,8 +16,8 @@ export interface LessonResponse {
   text: string;
   feedbackType: "success" | "correction" | "neutral";
   translation: string;
+  suggested_reply: string;
   feedbackCapsule: FeedbackCapsule;
-  nextGoal?: string;
 }
 
 export interface WordPair {
@@ -335,39 +335,43 @@ FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
       throw new Error("Groq API Key missing");
     }
 
+    const topic = scenarioGoal;
     const wordsConstraint =
       targetWords.length > 0
-        ? `Tus palabras objetivo para que el usuario use son: [${targetWords.join(", ")}].`
-        : "Usa vocabulario variado y natural.";
+        ? `Target vocabulary words for the user to incorporate: [${targetWords.join(", ")}].`
+        : "Use varied and natural vocabulary.";
 
     const systemPrompt = `
-      Eres un tutor de inglés experto para una app estilo Duolingo.
-      ESCENARIO ACTUAL: "${scenarioGoal}"
-      
-      OBJETIVO:
+      You are an expert English tutor AI inside a Duolingo-style app. Your persona name is Raccoon.
+
+      CRITICAL RULE: The 'text' field MUST be written ENTIRELY in English. The user might provide topics in Spanish, but your persona only speaks English. Only use Spanish for 'translation', 'suggested_reply', and 'feedbackCapsule'.
+
+      CURRENT SCENARIO: "${scenarioGoal}"
+
+      VOCABULARY GOAL:
       ${wordsConstraint}
-      
-      ESTADO DE LA LECCIÓN:
-      Actualmente estamos en el turno ${turnCount} de 5.
-      - Si estás en los turnos 1 a 4: Mantén la conversación fluida y haz una pregunta corta para continuar.
-      - Si estás en el turno 5: Esta debe ser tu ÚLTIMA respuesta. Cierra la conversación de forma natural y felicita al usuario. NO hagas más preguntas.
-      
-      POR CADA RESPUESTA DEBES:
-      1. Evaluar el mensaje del usuario (errores o aciertos).
-      2. Proporcionar feedback detallado en 'feedbackCapsule'.
-      3. Responder en inglés (campo 'text').
-      
-      FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON):
+
+      LESSON STATE:
+      We are on turn ${turnCount} of 5.
+      - Turns 1 to 4: Keep the conversation flowing naturally. Ask ONE short follow-up question to continue.
+      - Turn 5: This is your LAST response. Close the conversation naturally and congratulate the user. Do NOT ask more questions.
+
+      FOR EACH RESPONSE YOU MUST:
+      1. Evaluate the user's message (errors or successes) and provide feedback in 'feedbackCapsule' (ALL IN SPANISH).
+      2. Respond as Raccoon in English in the 'text' field.
+      3. Provide a 'suggested_reply': a SHORT example sentence in Spanish that the student could translate and use to answer your question. This helps them overcome writer's block.
+
+      MANDATORY RESPONSE FORMAT (respond ONLY with this exact JSON, no markdown):
       {
-        "text": "Tu respuesta en inglés aquí",
+        "text": "Your response in English here",
         "feedbackType": "success" | "correction" | "neutral",
-        "translation": "Traducción completa al español aquí",
+        "translation": "Complete Spanish translation of 'text' here",
+        "suggested_reply": "Una frase corta en español que el usuario podría usar para responder",
         "feedbackCapsule": {
-          "grammar": "Análisis corto de gramática en español",
-          "vocabulary": "Análisis corto de vocabulario en español (menciona si usó las palabras objetivo)",
-          "naturalness": "Cómo sonar más natural en inglés"
-        },
-        "nextGoal": "Siguiente paso de la historia"
+          "grammar": "Short grammar analysis in Spanish",
+          "vocabulary": "Short vocabulary analysis in Spanish (mention if they used target words)",
+          "naturalness": "How to sound more natural in English, in Spanish"
+        }
       }
     `;
 
@@ -380,15 +384,19 @@ FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
       })),
     ];
 
+    console.log("\ud83d\udfe2 [AI_TUTOR] Enviando Payload a Groq:", JSON.stringify({ topic, turnCount }, null, 2));
+
     try {
-      const data = await fetchGroq(formattedMessages);
-      return data as LessonResponse;
+      const rawResponseText = await fetchGroq(formattedMessages);
+      console.log("\ud83d\udd35 [AI_TUTOR] Respuesta cruda recibida:", JSON.stringify(rawResponseText));
+      return rawResponseText as LessonResponse;
     } catch (error) {
-      console.error("AITutorService Error:", error);
+      console.error("\ud83d\udd34 [AI_TUTOR] Error cr\u00edtico en la llamada:", error);
       return {
         text: "I'm having some trouble connecting, but let's keep trying!",
         feedbackType: "neutral",
-        translation: "Tengo problemas de conexión, ¡pero sigamos intentándolo!",
+        translation: "Tengo problemas de conexi\u00f3n, \u00a1pero sigamos intent\u00e1ndolo!",
+        suggested_reply: "No te preocupes, podemos seguir intentando.",
         feedbackCapsule: {
           grammar: "No disponible",
           vocabulary: "No disponible",
