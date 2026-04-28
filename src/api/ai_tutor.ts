@@ -347,18 +347,45 @@ FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
     }
   },
 
-  generateCrosswordData: async (level: number, vaultWords: string[]): Promise<CrosswordItem[]> => {
+  generateCrosswordData: async (level: number, vaultWords: string[], recentWords: string[] = []): Promise<{ items: CrosswordItem[], gridSize: number }> => {
+    const wordCount = 12;
+    let wordLengthRule = "cortas (3-5 letras)";
+    let gridSize = 8;
+    let vocabRule = "Vocabulario básico.";
+
+    if (level >= 4 && level <= 7) {
+      wordLengthRule = "medias (4-6 letras)";
+      gridSize = 10;
+      vocabRule = `Vocabulario intermedio. Mezcla palabras del baúl del usuario: [${vaultWords.slice(0, 5).join(', ')}] con palabras nuevas.`;
+    } else if (level >= 8) {
+      wordLengthRule = "largas (5-8 letras)";
+      gridSize = 12;
+      vocabRule = "Vocabulario avanzado.";
+    }
+
+    const themes = ["Comida", "Animales", "Hogar", "Cuerpo", "Ropa", "Ciudad", "Naturaleza", "Deportes"];
+    const randomTheme = themes[Math.floor(Math.random() * themes.length)];
+
     const systemPrompt = `
-      Genera exactamente 5 palabras en inglés con sus pistas en español para un mini crucigrama.
-      REGLA 1: Las palabras en inglés deben ser cortas (entre 3 y 6 letras máximo).
-      REGLA 2: Devuelve palabras de diccionario reales, todo en MAYÚSCULAS.
-      REGLA 3: La 'clue' (pista) debe ser una oración corta o definición en español.
-      Mezcla palabras del baúl del usuario: [${vaultWords.slice(0, 5).join(', ')}] con palabras nuevas.
+      Genera exactamente 12 palabras en inglés con sus pistas en español para un mini crucigrama.
+      REGLA 1: TEMA OBLIGATORIO: Todas las palabras deben ser de la categoría '${randomTheme}'.
+      REGLA 2: HISTORIAL PROHIBIDO: Bajo ninguna circunstancia uses estas palabras: [${recentWords.join(', ')}].
+      REGLA 3: Las palabras generadas DEBEN compartir varias letras entre sí (prioriza palabras con muchas vocales: A, E, I, O) para garantizar que puedan cruzarse en una cuadrícula.
+      REGLA 4: Las palabras en inglés deben ser ${wordLengthRule} y estar en MAYÚSCULAS.
+      REGLA 5: La pista ('clue') DEBE SER ÚNICAMENTE la traducción de la palabra al español. Sin acertijos, sin definiciones largas. Solo la palabra.
+      EJEMPLOS DE PISTAS CORRECTAS:
+      - DOG: 'Perro'
+      - RED: 'Rojo'
+      - WATER: 'Agua'
+      - APPLE: 'Manzana'
+      
+      PROHIBIDO usar definiciones, metáforas o frases largas. La pista debe ser solo la palabra traducida, empezando con Mayúscula.
+      ${vocabRule}
       
       FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON):
       {
         "items": [
-          { "word": "APPLE", "clue": "Fruta roja o verde que cruje al morder." }
+          { "word": "APPLE", "clue": "Manzana" }
         ]
       }
     `;
@@ -366,18 +393,22 @@ FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
     try {
       const data = await fetchGroq([{ role: 'system', content: systemPrompt }], 0.2);
       if (data.items && Array.isArray(data.items)) {
-        return data.items;
+        return { items: data.items, gridSize };
       }
       throw new Error('Formato de respuesta inválido');
     } catch (error) {
       console.error('AITutorService.generateCrosswordData Error:', error);
-      return [
-        { word: 'CAT', clue: 'Mascota felina que maúlla.' },
-        { word: 'SUN', clue: 'Estrella que ilumina el día.' },
-        { word: 'BOOK', clue: 'Objeto con páginas para leer.' },
-        { word: 'TREE', clue: 'Planta alta con tronco de madera.' },
-        { word: 'WATER', clue: 'Líquido vital transparente.' }
-      ];
+      return {
+        items: [
+          { word: 'CAT', clue: 'Gato' },
+          { word: 'SUN', clue: 'Sol' },
+          { word: 'BOOK', clue: 'Libro' },
+          { word: 'TREE', clue: 'Árbol' },
+          { word: 'WATER', clue: 'Agua' },
+          { word: 'PLANET', clue: 'Planeta' }
+        ].slice(0, wordCount),
+        gridSize
+      };
     }
   },
 

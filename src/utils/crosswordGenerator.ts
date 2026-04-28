@@ -108,6 +108,7 @@ export function generateGrid(items: CrosswordItem[], gridSize: number = 8) {
   };
 
   // 1. Colocar la primera palabra horizontalmente en el centro
+  let placedCount = 0;
   if (sortedItems.length > 0) {
     const firstItem = sortedItems[0];
     const firstWord = firstItem.word;
@@ -116,11 +117,14 @@ export function generateGrid(items: CrosswordItem[], gridSize: number = 8) {
     
     if (startCol >= 0) {
       placeWord(firstItem, startRow, startCol, 0, 1);
+      placedCount++;
     }
   }
 
   // 2. Colocar el resto buscando intersecciones
   for (let i = 1; i < sortedItems.length; i++) {
+    if (placedCount >= 5) break;
+
     const item = sortedItems[i];
     const word = item.word;
     let placed = false;
@@ -133,9 +137,6 @@ export function generateGrid(items: CrosswordItem[], gridSize: number = 8) {
       for (let r = 0; r < gridSize && !placed; r++) {
         for (let c = 0; c < gridSize && !placed; c++) {
           if (!grid[r][c].isBlack && grid[r][c].letter === char) {
-            // Comprobar si cruza verticalmente (si estaba horizontal) o al revés.
-            // Para simplificar, probamos en ambas direcciones.
-            
             // Intentar horizontal
             let dr = 0, dc = 1;
             let startRow = r - dr * charIdx;
@@ -143,6 +144,7 @@ export function generateGrid(items: CrosswordItem[], gridSize: number = 8) {
             if (canPlaceWord(word, startRow, startCol, dr, dc)) {
               placeWord(item, startRow, startCol, dr, dc);
               placed = true;
+              placedCount++;
               break;
             }
 
@@ -153,12 +155,17 @@ export function generateGrid(items: CrosswordItem[], gridSize: number = 8) {
             if (canPlaceWord(word, startRow, startCol, dr, dc)) {
               placeWord(item, startRow, startCol, dr, dc);
               placed = true;
+              placedCount++;
               break;
             }
           }
         }
       }
     }
+  }
+
+  if (placedCount < 3) {
+    throw new Error('No se pudieron cruzar suficientes palabras');
   }
 
   return { grid, acrossClues, downClues };
