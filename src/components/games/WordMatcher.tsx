@@ -11,7 +11,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated, { 
+  FadeInDown, 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring, 
+  withTiming, 
+  withSequence 
+} from 'react-native-reanimated';
 import { VaultService } from '../../api/vault';
 import { AITutorService } from '../../api/ai_tutor';
 import { useAppTheme } from '../../context/ThemeContext';
@@ -41,6 +48,103 @@ interface Card {
   matchId: number;
   type: 'es' | 'en';
 }
+
+const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
+
+const MatchCard = ({ 
+  card, 
+  isSelected, 
+  isMatched, 
+  isWrong, 
+  handleSelect, 
+  colors, 
+  isDarkMode 
+}: {
+  card: Card,
+  isSelected: boolean,
+  isMatched: boolean,
+  isWrong: boolean,
+  handleSelect: (card: Card) => void,
+  colors: any,
+  isDarkMode: boolean
+}) => {
+  const scale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const opacity = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: scale.value },
+      { translateX: translateX.value }
+    ],
+    opacity: opacity.value
+  }));
+
+  useEffect(() => {
+    if (isWrong) {
+      translateX.value = withSequence(
+        withTiming(10, { duration: 60 }),
+        withTiming(-10, { duration: 60 }),
+        withTiming(10, { duration: 60 }),
+        withTiming(0, { duration: 60 })
+      );
+    }
+  }, [isWrong]);
+
+  useEffect(() => {
+    if (isMatched) {
+      scale.value = withSequence(
+        withSpring(1.15),
+        withTiming(0.9, { duration: 300 })
+      );
+      opacity.value = withTiming(0, { duration: 300 });
+    } else {
+      // Reset if game restarts or something
+      opacity.value = 1;
+      scale.value = 1;
+    }
+  }, [isMatched]);
+
+  const onPressIn = () => {
+    if (!isMatched && !isWrong) {
+      scale.value = withTiming(0.95, { duration: 100 });
+    }
+  };
+
+  const onPressOut = () => {
+    if (!isMatched && !isWrong) {
+      scale.value = withTiming(1, { duration: 100 });
+    }
+  };
+
+  return (
+    <AnimatedTouchableOpacity
+      activeOpacity={1}
+      onPressIn={onPressIn}
+      onPressOut={onPressOut}
+      onPress={() => handleSelect(card)}
+      disabled={isMatched}
+      style={[
+        styles.card,
+        { backgroundColor: colors.card, borderColor: colors.border },
+        isSelected && [styles.cardSelected, { borderColor: colors.accent, backgroundColor: isDarkMode ? '#28285c' : '#f8f9ff' } ],
+        isMatched && [styles.cardMatched, isDarkMode && { backgroundColor: '#1c4a30' }],
+        isWrong && [styles.cardWrong, isDarkMode && { backgroundColor: '#4a1515' }],
+        animatedStyle
+      ]}
+    >
+      <Text style={[
+        styles.cardText, 
+        { color: colors.text },
+        isSelected && [styles.cardTextActive, { color: colors.accent }],
+        isMatched && styles.cardTextMatched,
+        isWrong && styles.cardTextWrong
+      ]}>
+        {card.content}
+      </Text>
+    </AnimatedTouchableOpacity>
+  );
+};
 
 export default function WordMatcher({ 
   words = [], 
@@ -74,8 +178,9 @@ export default function WordMatcher({
 
   const [combo, setCombo] = useState(0);
   const [maxCombo, setMaxCombo] = useState(0);
-  const [lives, setLives] = useState(3);
+  const [timeLeft, setTimeLeft] = useState(30);
   const [showGameOver, setShowGameOver] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const timeoutRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
@@ -84,6 +189,22 @@ export default function WordMatcher({
       refs.forEach(clearTimeout);
     };
   }, []);
+
+  useEffect(() => {
+    if (words.length === 0 || showSummary || showGameOver) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          setShowGameOver(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [words.length, showSummary, showGameOver]);
 
   const safeSetTimeout = (cb: () => void, delay: number) => {
     const id = setTimeout(cb, delay);
@@ -94,7 +215,7 @@ export default function WordMatcher({
   const initGame = useCallback(() => {
     if (words.length === 0) return;
     
-    setLives(3);
+    setTimeLeft(30);
     setCombo(0);
     setMaxCombo(0);
     setMatchedIds([]);
@@ -138,9 +259,11 @@ export default function WordMatcher({
           console.log("🟢 [MATCHER] ¡MATCH Exitoso! ID:", selectedEs.matchId, "| Combo actual:", newCombo);
           return newCombo;
         });
+        setTimeLeft(prev => Math.min(prev + 3, 45));
         const mId = selectedEs.matchId;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         
+        setIsProcessing(true);
         safeSetTimeout(() => {
           setMatchedIds(prev => {
             const next = [...prev, mId];
@@ -151,11 +274,13 @@ export default function WordMatcher({
           });
           setSelectedEs(null);
           setSelectedEn(null);
+          setIsProcessing(false);
         }, 300);
         
       } else {
         // ERROR
         console.log("🔴 [MATCHER] ERROR al emparejar. Combo reseteado a 0.");
+        setIsProcessing(true);
         setCombo(0);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         const wEs = selectedEs;
@@ -165,23 +290,19 @@ export default function WordMatcher({
         setSelectedEs(null);
         setSelectedEn(null);
         
-        setLives(prev => {
-          const next = prev - 1;
-          if (next <= 0) {
-            safeSetTimeout(() => setShowGameOver(true), 600);
-          }
-          return next;
-        });
+        setTimeLeft(prev => Math.max(prev - 2, 0));
         
         safeSetTimeout(() => {
           setWrongEs(null);
           setWrongEn(null);
+          setIsProcessing(false);
         }, 800);
       }
     }
   }, [selectedEs, selectedEn, words.length]);
 
   const handleSelect = (card: Card) => {
+    if (isProcessing) return;
     // If it's already matched, or wait state is active
     if (matchedIds.includes(card.matchId) || (wrongEs !== null)) return;
 
@@ -190,6 +311,7 @@ export default function WordMatcher({
     
     if (card.type === 'en') {
       try {
+        Speech.stop();
         Speech.speak(card.content, { language: 'en-US' });
       } catch (error) {
         console.warn('Speech Error:', error);
@@ -247,28 +369,16 @@ export default function WordMatcher({
     const isMatched = matchedIds.includes(card.matchId);
 
     return (
-      <TouchableOpacity
+      <MatchCard 
         key={card.id}
-        onPress={() => handleSelect(card)}
-        disabled={isMatched}
-        style={[
-          styles.card,
-          { backgroundColor: colors.card, borderColor: colors.border },
-          isSelected && [styles.cardSelected, { borderColor: colors.accent, backgroundColor: isDarkMode ? '#28285c' : '#f8f9ff' } ],
-          isMatched && [styles.cardMatched, isDarkMode && { backgroundColor: '#1c4a30' }],
-          isWrong && [styles.cardWrong, isDarkMode && { backgroundColor: '#4a1515' }]
-        ]}
-      >
-        <Text style={[
-          styles.cardText, 
-          { color: colors.text },
-          isSelected && [styles.cardTextActive, { color: colors.accent }],
-          isMatched && styles.cardTextMatched,
-          isWrong && styles.cardTextWrong
-        ]}>
-          {card.content}
-        </Text>
-      </TouchableOpacity>
+        card={card}
+        isSelected={isSelected}
+        isMatched={isMatched}
+        isWrong={isWrong}
+        handleSelect={handleSelect}
+        colors={colors}
+        isDarkMode={isDarkMode}
+      />
     );
   };
 
@@ -343,42 +453,47 @@ export default function WordMatcher({
     );
   }
 
-  const renderHUD = () => (
-    <View style={styles.hudContainer}>
-      <View style={styles.hudLeft}>
-        <Text style={[styles.hudLevelText, { color: colors.text }]}>Nivel {level}</Text>
-        <View style={[styles.hudProgressBg, { backgroundColor: colors.border }]}>
-          <View style={[styles.hudProgressFill, { width: `${exp % 100}%`, backgroundColor: colors.accent }]} />
+  const renderHUD = () => {
+    const isLowTime = timeLeft < 10;
+    const timeBarColor = isLowTime ? '#ff4757' : '#05c46b';
+    const barWidth = (timeLeft / 45) * 100;
+
+    return (
+      <View style={styles.hudContainer}>
+        <View style={styles.hudLeft}>
+          <Text style={[styles.hudLevelText, { color: colors.text }]}>Nivel {level}</Text>
+          <View style={[styles.hudProgressBg, { backgroundColor: colors.border }]}>
+            <View style={[styles.hudProgressFill, { width: `${exp % 100}%`, backgroundColor: colors.accent }]} />
+          </View>
+        </View>
+
+        <View style={styles.hudCenter}>
+           <View style={[styles.timeBarBg, { backgroundColor: colors.border }]}>
+             <View style={[styles.timeBarFill, { width: `${barWidth}%`, backgroundColor: timeBarColor }]} />
+           </View>
+           <Text style={[styles.timeText, { color: timeBarColor }]}>{timeLeft}s</Text>
+        </View>
+
+        <View style={styles.hudRight}>
+          <Text style={[
+            styles.hudComboText, 
+            { color: combo > 2 ? '#ff9f43' : colors.accent },
+            combo <= 1 && { color: 'transparent' }
+          ]}>
+            {combo > 2 && "🔥 "}x{combo}
+          </Text>
         </View>
       </View>
-
-      <View style={styles.hudCenter}>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Ionicons 
-            key={`heart-${i}`} 
-            name={i < lives ? "heart" : "heart-outline"} 
-            size={24} 
-            color="#ff4757" 
-            style={{ marginHorizontal: 2 }}
-          />
-        ))}
-      </View>
-
-      <View style={styles.hudRight}>
-        <Text style={[styles.hudComboText, { color: combo > 1 ? colors.accent : 'transparent' }]}>
-          🔥 x{combo}
-        </Text>
-      </View>
-    </View>
-  );
+    );
+  };
 
   if (showGameOver) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center' }]}>
-        <Ionicons name="skull" size={80} color="#ff4757" style={{ marginBottom: 20 }} />
-        <Text style={[styles.titleSuccess, { color: '#ff4757' }]}>Nivel Fallido</Text>
+        <Ionicons name="timer" size={80} color="#ff4757" style={{ marginBottom: 20 }} />
+        <Text style={[styles.titleSuccess, { color: '#ff4757' }]}>¡Tiempo Agotado!</Text>
         <Text style={[styles.subtitle, { color: colors.text, opacity: 0.7 }]}>
-          Te has quedado sin vidas. ¡Concéntrate y vuelve a intentarlo!
+          Se acabó el tiempo. ¡Inténtalo de nuevo y sé más rápido!
         </Text>
         
         <TouchableOpacity 
@@ -451,6 +566,20 @@ const styles = StyleSheet.create({
   hudComboText: {
     fontSize: 18,
     fontWeight: '900',
+  },
+  timeBarBg: { 
+    width: 80, 
+    height: 10, 
+    borderRadius: 5, 
+    overflow: 'hidden', 
+    marginRight: 8 
+  },
+  timeBarFill: { 
+    height: '100%' 
+  },
+  timeText: { 
+    fontSize: 15, 
+    fontWeight: '900' 
   },
   title: { fontSize: 24, fontWeight: '900', color: '#1e272e', marginBottom: 20 },
   titleSuccess: { fontSize: 26, fontWeight: '900', color: '#05c46b', marginBottom: 8, marginTop: 20 },

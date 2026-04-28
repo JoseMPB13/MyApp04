@@ -10,6 +10,15 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withRepeat, 
+  withSequence, 
+  withTiming, 
+  withDelay 
+} from 'react-native-reanimated';
+import * as Speech from 'expo-speech';
 import { Ionicons } from '@expo/vector-icons';
 import { AITutorService, FeedbackCapsule as FeedbackType } from '../../api/ai_tutor';
 import { VaultService } from '../../api/vault';
@@ -31,7 +40,7 @@ const FeedbackCapsule = ({ feedback }: { feedback: FeedbackType }) => {
     <View style={[styles.feedbackContainer, { backgroundColor: isDarkMode ? '#281a3a' : '#f8f4ff', borderColor: isDarkMode ? '#4b2c6e' : '#efe5ff' }]}>
       <View style={styles.feedbackHeader}>
         <Ionicons name="bulb" size={20} color={colors.accent} />
-        <Text style={[styles.feedbackHeaderText, { color: colors.accent }]}>Análisis de la IA</Text>
+        <Text style={[styles.feedbackHeaderText, { color: colors.accent }]}>Análisis de tu mensaje anterior</Text>
       </View>
       <View style={styles.feedbackItem}>
         <Text style={[styles.feedbackLabel, isDarkMode && { color: '#a29bfe' }]}>Gramática:</Text>
@@ -45,6 +54,41 @@ const FeedbackCapsule = ({ feedback }: { feedback: FeedbackType }) => {
         <Text style={[styles.feedbackLabel, isDarkMode && { color: '#a29bfe' }]}>Naturalidad:</Text>
         <Text style={[styles.feedbackValue, { color: colors.text }]}>{feedback.naturalness}</Text>
       </View>
+    </View>
+  );
+};
+
+const TypingBubble = () => {
+  const { colors } = useAppTheme();
+  const dot1 = useSharedValue(0);
+  const dot2 = useSharedValue(0);
+  const dot3 = useSharedValue(0);
+
+  useEffect(() => {
+    const anim = (sv: any, delay: number) => {
+      sv.value = withDelay(delay, withRepeat(
+        withSequence(
+          withTiming(-6, { duration: 300 }),
+          withTiming(0, { duration: 300 })
+        ),
+        -1,
+        true
+      ));
+    };
+    anim(dot1, 0);
+    anim(dot2, 150);
+    anim(dot3, 300);
+  }, []);
+
+  const animatedStyle = (sv: any) => useAnimatedStyle(() => ({
+    transform: [{ translateY: sv.value }]
+  }));
+
+  return (
+    <View style={[styles.aiBubble, styles.typingBubble, { backgroundColor: colors.card }]}>
+      <Animated.View style={[styles.dot, { backgroundColor: colors.text, opacity: 0.4 }, animatedStyle(dot1)]} />
+      <Animated.View style={[styles.dot, { backgroundColor: colors.text, opacity: 0.4 }, animatedStyle(dot2)]} />
+      <Animated.View style={[styles.dot, { backgroundColor: colors.text, opacity: 0.4 }, animatedStyle(dot3)]} />
     </View>
   );
 };
@@ -64,8 +108,20 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
   const [loading, setLoading] = useState(true);
   const [turnCount, setTurnCount] = useState(1);
   const [visibleTranslations, setVisibleTranslations] = useState<{[key: string]: boolean}>({});
+  const [currentHint, setCurrentHint] = useState<string | null>(null);
+  const [showHintModal, setShowHintModal] = useState(false);
 
   const scrollRef = useRef<ScrollView>(null);
+  const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (phase === 'CHAT' && messages.length > 0) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [messages.length, phase]);
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -100,18 +156,37 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
     setLoading(false);
   };
 
-  const handleSelectTopic = (topic: string) => {
+  const handleSelectTopic = async (topic: string) => {
     setSelectedTopic(topic);
     setPhase('CHAT');
-    
-    // Iniciar chat
-    const welcome = `Hi, I am Raccoon 🦝! Great choice! Let's talk about "${topic}". You can tell me what you like about this topic or ask me a question to start.`;
-    setMessages([{ 
-      id: '1', 
-      text: welcome, 
-      sender: 'ai',
-      translation: `¡Hola, soy Raccoon 🦝! ¡Buena elección! Hablemos sobre "${topic}". Puedes decirme qué te gusta de este tema o hacerme una pregunta para empezar.`
-    }]);
+    setLoading(true);
+
+    try {
+      // Ice Breaker: la IA toma la iniciativa y genera la apertura
+      const iceBreaker = await AITutorService.getLessonResponse(
+        [{ id: 'system-init', text: `[INSTRUCCIÓN INTERNA: Eres Raccoon 🦝, un tutor amigable. Preséntate brevemente y haz UNA pregunta específica y abierta sobre el tema "${topic}" para iniciar la conversación. NO evalúes nada todavía.]`, sender: 'user' }],
+        `Tema: ${topic}. Categoría: ${selectedCategory}. ${vaultWords.length === 0 ? 'El usuario es nuevo, usa vocabulario básico.' : `Palabras objetivo del usuario: [${vaultWords.slice(0, 5).join(', ')}].`}`,
+        vaultWords,
+        0
+      );
+
+      const firstMsg: Message = {
+        id: '1',
+        text: iceBreaker.text,
+        sender: 'ai',
+        translation: iceBreaker.translation,
+      };
+      setMessages([firstMsg]);
+      if (iceBreaker.nextGoal) setCurrentHint(iceBreaker.nextGoal);
+    } catch {
+      // Fallback estático si la IA falla
+      const fallbackText = vaultWords.length === 0
+        ? `Hi, I'm Raccoon 🦝! Your vocabulary vault is empty, but no worries! Let's warm up. How are you feeling today?`
+        : `Hi, I'm Raccoon 🦝! Let's talk about "${topic}". What's the first thing that comes to mind?`;
+      setMessages([{ id: '1', text: fallbackText, sender: 'ai', translation: '¡Hola! Soy Raccoon. Hablemos.' }]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const toggleTranslation = (msgId: string) => {
@@ -148,11 +223,18 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
 
       setMessages(prev => [...prev, aiMsg]);
       setTurnCount(prev => prev + 1);
+      if (response.nextGoal) setCurrentHint(response.nextGoal);
+      else setCurrentHint(null);
     } catch (error) {
-      console.error(error);
+      console.error("AI Lesson Error:", error);
+      const systemError: Message = {
+        id: 'error-' + Date.now(),
+        text: "Error de conexión. Por favor, intenta enviar tu mensaje de nuevo.",
+        sender: 'ai'
+      };
+      setMessages(prev => [...prev, systemError]);
     } finally {
       setLoading(false);
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     }
   };
 
@@ -169,21 +251,32 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
     }
 
     if (phase === 'SELECT_CATEGORY') {
+      const catIcons: Record<number, any> = { 0: 'star', 1: 'airplane', 2: 'restaurant', 3: 'briefcase', 4: 'leaf' };
+      const catColors = ['#575fcf', '#ff6b6b', '#05c46b', '#ff9f43', '#0984e3'];
       return (
         <ScrollView contentContainerStyle={styles.selectionContainer}>
-          <Text style={[styles.phaseTitle, { color: colors.text }]}>¿Qué quieres practicar hoy?</Text>
-          <Text style={styles.phaseSubtitle}>Basado en tu Baúl de vocabulario</Text>
-          
-          {categories.map((cat, i) => (
-            <TouchableOpacity 
-              key={i} 
-              style={[styles.bentoBtn, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.border }]} 
-              onPress={() => handleSelectCategory(cat)}
-            >
-              <Text style={[styles.bentoBtnText, { color: colors.accent }]}>{cat}</Text>
-              <Ionicons name="chevron-forward" size={24} color={colors.accent} />
-            </TouchableOpacity>
-          ))}
+          <Text style={[styles.phaseTitle, { color: colors.text }]}>¿Sobre qué quieres hablar?</Text>
+          <Text style={styles.phaseSubtitle}>Basado en tu baúl de vocabulario</Text>
+          <View style={styles.bentoGrid}>
+            {categories.map((cat, i) => (
+              <TouchableOpacity 
+                key={i} 
+                style={[
+                  styles.bentoCatCard, 
+                  styles.cardShadow, 
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                  i === 0 && styles.bentoCatCardWide
+                ]} 
+                onPress={() => handleSelectCategory(cat)}
+              >
+                <View style={[styles.bentoCatIcon, { backgroundColor: catColors[i % catColors.length] + '22' }]}>
+                  <Ionicons name={catIcons[i] || 'ellipse'} size={28} color={catColors[i % catColors.length]} />
+                </View>
+                <Text style={[styles.bentoCatText, { color: colors.text }]}>{cat}</Text>
+                <Text style={[styles.bentoCatSub, { color: colors.text }]}>Toca para elegir →</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </ScrollView>
       );
     }
@@ -191,22 +284,25 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
     if (phase === 'SELECT_TOPIC') {
       return (
         <ScrollView contentContainerStyle={styles.selectionContainer}>
-          <Text style={[styles.phaseTitle, { color: colors.text }]}>Elige un Tema</Text>
+          <Text style={[styles.phaseTitle, { color: colors.text }]}>Elige tu escenario</Text>
           <Text style={styles.phaseSubtitle}>Categoría: {selectedCategory}</Text>
-          
           {topics.map((topic, i) => (
             <TouchableOpacity 
               key={i} 
-              style={[styles.bentoBtn, styles.cardShadow, { backgroundColor: colors.background, borderColor: colors.card }]} 
+              style={[styles.bentoTopicCard, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.border }]} 
               onPress={() => handleSelectTopic(topic)}
             >
-              <Text style={[styles.bentoBtnText, { color: colors.text }]}>{topic}</Text>
-              <Ionicons name="play-circle" size={28} color="#05c46b" />
+              <View style={styles.bentoTopicLeft}>
+                <Text style={styles.bentoTopicNumber}>0{i + 1}</Text>
+                <Text style={[styles.bentoTopicText, { color: colors.text }]}>{topic}</Text>
+              </View>
+              <View style={styles.bentoTopicPlay}>
+                <Ionicons name="play" size={16} color="#FFF" />
+              </View>
             </TouchableOpacity>
           ))}
-          
           <TouchableOpacity style={styles.backLink} onPress={() => setPhase('SELECT_CATEGORY')}>
-            <Text style={styles.backLinkText}>Volver a Categorías</Text>
+            <Text style={styles.backLinkText}>← Volver a Categorías</Text>
           </TouchableOpacity>
         </ScrollView>
       );
@@ -227,6 +323,8 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
           style={styles.chatContainer}
           contentContainerStyle={{ paddingBottom: 20 }}
           keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+          onLayout={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
           {messages.map((m) => (
             <View key={m.id} style={styles.messageWrapper}>
@@ -236,6 +334,17 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
                 styles.bubble,
                 m.sender === 'user' ? [styles.userBubble, { backgroundColor: colors.accent }] : [styles.aiBubble, { backgroundColor: colors.card }]
               ]}>
+                {m.sender === 'ai' && (
+                  <TouchableOpacity 
+                    style={styles.speakerIcon} 
+                    onPress={() => {
+                      Speech.stop();
+                      Speech.speak(m.text, { language: 'en-US', pitch: 1.0, rate: 0.9 });
+                    }}
+                  >
+                    <Ionicons name="volume-medium" size={18} color={colors.accent} />
+                  </TouchableOpacity>
+                )}
                 <Text style={m.sender === 'user' ? styles.messageText : [styles.aiMessageText, { color: colors.text }]}>
                   {m.text}
                 </Text>
@@ -256,10 +365,8 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
             </View>
           ))}
 
-          {loading && (
-            <View style={styles.loadingChat}>
-              <ActivityIndicator color="#575fcf" />
-            </View>
+          {loading && messages[messages.length - 1]?.sender === 'user' && (
+            <TypingBubble />
           )}
 
           {turnCount > 5 && !loading && (
@@ -273,23 +380,45 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
         </ScrollView>
 
         {turnCount <= 5 && (
-          <View style={[styles.inputArea, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
-              placeholder="Escribe en inglés..."
-              placeholderTextColor="#95a5a6"
-              value={inputText}
-              onChangeText={setInputText}
-              multiline
-              editable={!loading}
-            />
-            <TouchableOpacity 
-              style={[styles.sendButton, loading && { opacity: 0.5 }]} 
-              onPress={sendMessage}
-              disabled={loading}
-            >
-              <Ionicons name="send" size={24} color="#FFF" />
-            </TouchableOpacity>
+          <View>
+            {showHintModal && currentHint && (
+              <TouchableOpacity 
+                style={[styles.hintModal, { backgroundColor: isDarkMode ? '#281a3a' : '#f8f4ff', borderColor: isDarkMode ? '#4b2c6e' : '#ddd2f8' }]}
+                onPress={() => setShowHintModal(false)}
+              >
+                <View style={styles.hintModalHeader}>
+                  <Ionicons name="bulb" size={16} color="#f1c40f" />
+                  <Text style={[styles.hintModalLabel, { color: colors.accent }]}>Podrías decir...</Text>
+                  <Ionicons name="close" size={16} color={colors.text} style={{ opacity: 0.4, marginLeft: 'auto' }} />
+                </View>
+                <Text style={[styles.hintModalText, { color: colors.text }]}>{currentHint}</Text>
+              </TouchableOpacity>
+            )}
+            <View style={[styles.inputArea, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+              <TextInput
+                ref={inputRef}
+                style={[styles.input, { backgroundColor: colors.background, color: colors.text }]}
+                placeholder="Escribe en inglés..."
+                placeholderTextColor="#95a5a6"
+                value={inputText}
+                onChangeText={setInputText}
+                multiline
+                editable={!loading}
+              />
+              <TouchableOpacity 
+                style={[styles.hintButton, { backgroundColor: isDarkMode ? '#2c2c2c' : '#F0F2F5', borderColor: colors.border }]}
+                onPress={() => setShowHintModal(prev => !prev)}
+              >
+                <Ionicons name="bulb" size={24} color="#f1c40f" />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.sendButton, loading && { opacity: 0.5 }]} 
+                onPress={sendMessage}
+                disabled={loading}
+              >
+                <Ionicons name="send" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </View>
@@ -324,23 +453,42 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 22, fontWeight: '900', color: '#1e272e' },
   headerSubtitle: { fontSize: 14, color: '#636e72', marginTop: 2, fontWeight: '600' },
   
-  selectionContainer: { padding: 20 },
-  phaseTitle: { fontSize: 24, fontWeight: '900', color: '#1e272e', marginBottom: 8 },
-  phaseSubtitle: { fontSize: 16, color: '#7f8c8d', marginBottom: 24, fontWeight: '500' },
-  bentoBtn: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
+  selectionContainer: { padding: 20, paddingBottom: 40 },
+  phaseTitle: { fontSize: 24, fontWeight: '900', color: '#1e272e', marginBottom: 6 },
+  phaseSubtitle: { fontSize: 15, color: '#7f8c8d', marginBottom: 24, fontWeight: '500' },
+
+  // Bento Grid - Categorías
+  bentoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  bentoCatCard: {
+    width: '47%',
+    borderRadius: 24,
+    borderWidth: 1.5,
+    padding: 20,
+    minHeight: 130,
     justifyContent: 'space-between',
-    backgroundColor: '#FFF', 
-    padding: 20, 
-    borderRadius: 20, 
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: '#EEF1FF'
   },
-  bentoBtnText: { fontSize: 18, fontWeight: '800', color: '#575fcf' },
+  bentoCatCardWide: { width: '100%' },
+  bentoCatIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  bentoCatText: { fontSize: 17, fontWeight: '900', marginBottom: 4 },
+  bentoCatSub: { fontSize: 11, fontWeight: '600', opacity: 0.4 },
+
+  // Bento List - Temas
+  bentoTopicCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 24,
+    borderWidth: 1.5,
+    padding: 20,
+    marginBottom: 12,
+  },
+  bentoTopicLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  bentoTopicNumber: { fontSize: 28, fontWeight: '900', color: '#E0E3FF', marginRight: 14 },
+  bentoTopicText: { fontSize: 16, fontWeight: '800', flex: 1 },
+  bentoTopicPlay: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#575fcf', alignItems: 'center', justifyContent: 'center' },
+
   backLink: { padding: 16, alignItems: 'center', marginTop: 8 },
-  backLinkText: { color: '#95a5a6', fontSize: 16, fontWeight: '700' },
+  backLinkText: { color: '#95a5a6', fontSize: 15, fontWeight: '700' },
   
   progressHeader: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, backgroundColor: '#FFF' },
   progressText: { fontSize: 14, fontWeight: '800', color: '#575fcf', marginBottom: 8 },
@@ -404,11 +552,49 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   loadingChat: { padding: 10, alignSelf: 'center' },
+  typingBubble: { 
+    flexDirection: 'row', 
+    paddingHorizontal: 20, 
+    paddingVertical: 18, 
+    alignItems: 'center',
+    width: 70,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    borderRadius: 20,
+    marginBottom: 20
+  },
+  dot: { width: 6, height: 6, borderRadius: 3, marginHorizontal: 2 },
   
   completionContainer: { padding: 24, alignItems: 'center', marginTop: 16 },
   completionTitle: { fontSize: 24, fontWeight: '900', color: '#05c46b', marginBottom: 24 },
   primaryBtn: { backgroundColor: '#575fcf', paddingHorizontal: 24, paddingVertical: 16, borderRadius: 20, width: '100%', alignItems: 'center' },
   primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '900' },
+
+  speakerIcon: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    zIndex: 10
+  },
+  hintButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1
+  },
+  hintModal: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 16,
+  },
+  hintModalHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 },
+  hintModalLabel: { fontSize: 13, fontWeight: '800' },
+  hintModalText: { fontSize: 15, fontWeight: '600', lineHeight: 22 },
 
   cardShadow: {
     ...Platform.select({

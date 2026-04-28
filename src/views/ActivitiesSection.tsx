@@ -54,7 +54,7 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
       const vaultEn = vaultWords.map(w => w.word_en.toLowerCase());
       const shuffledVault = [...vaultEn].sort(() => Math.random() - 0.5).slice(0, 5);
       
-      const generated = await AITutorService.generateMatcherLevel(level, shuffledVault, currentRecent);
+      const generated = await AITutorService.generateMatcherLevel(currentLevel, shuffledVault, currentRecent);
       
       const mappedGenerated = generated.map((word: any) => ({
         ...word,
