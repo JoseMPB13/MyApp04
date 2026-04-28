@@ -10,7 +10,7 @@ interface CrosswordGameProps {
   userId: string;
   level: number;
   exp: number;
-  onNextLevel: () => void;
+  onNextLevel: (expGain: number) => void;
   onExit: (expGain: number) => void;
 }
 
@@ -33,9 +33,20 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
   const [validationGrid, setValidationGrid] = useState<string[][]>([]);
   const [hintsUsed, setHintsUsed] = useState(0);
   const [recentWords, setRecentWords] = useState<string[]>([]);
+  
+  const [activeClue, setActiveClue] = useState<ClueInfo | null>(null);
+  const [trayLetters, setTrayLetters] = useState<{id: string, char: string, used: boolean}[]>([]);
 
-  // References to input fields
-  const inputsRef = useRef<(TextInput | null)[][]>([]);
+  const setupActiveWord = useCallback((clue: ClueInfo) => {
+    setActiveClue(clue);
+    const letters = clue.word.split('');
+    const shuffled = [...letters].sort(() => Math.random() - 0.5);
+    setTrayLetters(shuffled.map((char, index) => ({
+      id: `${char}-${index}`,
+      char,
+      used: false
+    })));
+  }, []);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -54,10 +65,29 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
       setAcrossClues(aClues);
       setDownClues(dClues);
       
-      // Initialize empty user grid and refs
+      // Initialize empty user grid
       setUserGrid(Array(dynamicGridSize).fill(null).map(() => Array(dynamicGridSize).fill('')));
       setValidationGrid(Array(dynamicGridSize).fill(null).map(() => Array(dynamicGridSize).fill('none')));
-      inputsRef.current = Array(dynamicGridSize).fill(null).map(() => Array(dynamicGridSize).fill(null));
+
+      // Auto-focus first valid cell
+      let foundFocus = false;
+      for (let r = 0; r < dynamicGridSize && !foundFocus; r++) {
+        for (let c = 0; c < dynamicGridSize && !foundFocus; c++) {
+          if (!newGrid[r][c].isBlack) {
+            setActiveRow(r);
+            setActiveCol(c);
+            foundFocus = true;
+
+            const across = aClues.find(cl => cl.row === r && c >= cl.col && c < cl.col + cl.word.length);
+            const down = dClues.find(cl => cl.col === c && r >= cl.row && r < cl.row + cl.word.length);
+            const clueToSet = across || down;
+            if (clueToSet) {
+              setDirectionAcross(clueToSet.direction === 'across');
+              setupActiveWord(clueToSet);
+            }
+          }
+        }
+      }
       
     } catch (e) {
       console.error(e);
@@ -93,92 +123,127 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
     return false;
   };
 
-  const handleTextChange = (text: string, r: number, c: number) => {
-    if (text === '') return; // El borrado lo maneja onKeyPress
+  const handleTrayLetterPress = (trayItem: {id: string, char: string, used: boolean}, index: number) => {
+    if (!activeClue || trayItem.used) return;
 
-    const val = text.toUpperCase().slice(-1); // Solo la última letra
-    const newGrid = [...userGrid];
-    newGrid[r] = [...newGrid[r]];
-    newGrid[r][c] = val;
-    setUserGrid(newGrid);
+    // Buscar primera celda vacía de la palabra
+    const isAcross = activeClue.direction === 'across';
+    let targetR = -1;
+    let targetC = -1;
 
-    const newValGrid = [...validationGrid];
-    newValGrid[r] = [...newValGrid[r]];
-    newValGrid[r][c] = 'none';
-    setValidationGrid(newValGrid);
+    for (let i = 0; i < activeClue.word.length; i++) {
+      const r = isAcross ? activeClue.row : activeClue.row + i;
+      const c = isAcross ? activeClue.col + i : activeClue.col;
+      
+      // Si la celda está vacía, es nuestro objetivo
+      if (!userGrid[r][c] || userGrid[r][c] === '') {
+        targetR = r;
+        targetC = c;
+        break;
+      }
+    }
 
-    // Calcular siguiente celda
-    const nextR = directionAcross ? r : r + 1;
-    const nextC = directionAcross ? c + 1 : c;
+    if (targetR !== -1 && targetC !== -1) {
+      // Escribir en tablero
+      const newGrid = [...userGrid];
+      newGrid[targetR] = [...newGrid[targetR]];
+      newGrid[targetR][targetC] = trayItem.char;
+      setUserGrid(newGrid);
 
-    if (nextR < gridSize && nextC < gridSize && !grid[nextR][nextC].isBlack) {
-      // Pequeño timeout para evitar conflictos de renderizado en React Native
-      setTimeout(() => {
-        inputsRef.current[nextR][nextC]?.focus();
-        setActiveRow(nextR);
-        setActiveCol(nextC);
-      }, 10);
+      const newValGrid = [...validationGrid];
+      newValGrid[targetR] = [...newValGrid[targetR]];
+      newValGrid[targetR][targetC] = 'none';
+      setValidationGrid(newValGrid);
+
+      // Desactivar letra
+      const newTray = [...trayLetters];
+      newTray[index] = { ...trayItem, used: true };
+      setTrayLetters(newTray);
+      
+      // Movemos el cursor activo por consistencia visual
+      setActiveRow(targetR);
+      setActiveCol(targetC);
     }
   };
 
-  const handleKeyPress = (e: any, r: number, c: number) => {
-    if (e.nativeEvent.key === 'Backspace') {
-      const currentVal = userGrid[r][c];
+  const handleBackspace = () => {
+    if (!activeClue) return;
+
+    const isAcross = activeClue.direction === 'across';
+    let targetR = -1;
+    let targetC = -1;
+    let charToUndo = '';
+
+    // Buscar la última celda llenada de la palabra
+    for (let i = activeClue.word.length - 1; i >= 0; i--) {
+      const r = isAcross ? activeClue.row : activeClue.row + i;
+      const c = isAcross ? activeClue.col + i : activeClue.col;
       
-      if (!currentVal || currentVal === '') {
-        // Retroceder si está vacío
-        const prevR = directionAcross ? r : r - 1;
-        const prevC = directionAcross ? c - 1 : c;
-
-        if (prevR >= 0 && prevC >= 0 && !grid[prevR][prevC].isBlack) {
-          const newGrid = [...userGrid];
-          newGrid[prevR] = [...newGrid[prevR]];
-          newGrid[prevR][prevC] = ''; // Limpiar la anterior
-          setUserGrid(newGrid);
-          
-          const newValGrid = [...validationGrid];
-          newValGrid[prevR] = [...newValGrid[prevR]];
-          newValGrid[prevR][prevC] = 'none';
-          setValidationGrid(newValGrid);
-
-          inputsRef.current[prevR][prevC]?.focus();
-          setActiveRow(prevR);
-          setActiveCol(prevC);
+      if (userGrid[r][c] && userGrid[r][c] !== '') {
+        // NO borramos letras que sean de una intersección validada como correcta
+        if (validationGrid[r][c] !== 'correct') {
+          targetR = r;
+          targetC = c;
+          charToUndo = userGrid[r][c];
+          break;
         }
-      } else {
-        // Solo limpiar la actual
-        const newGrid = [...userGrid];
-        newGrid[r] = [...newGrid[r]];
-        newGrid[r][c] = '';
-        setUserGrid(newGrid);
-
-        const newValGrid = [...validationGrid];
-        newValGrid[r] = [...newValGrid[r]];
-        newValGrid[r][c] = 'none';
-        setValidationGrid(newValGrid);
       }
+    }
+
+    if (targetR !== -1 && targetC !== -1) {
+      // Borrar del tablero
+      const newGrid = [...userGrid];
+      newGrid[targetR] = [...newGrid[targetR]];
+      newGrid[targetR][targetC] = '';
+      setUserGrid(newGrid);
+
+      // Restaurar letra en la bandeja
+      const trayIndex = trayLetters.findIndex(t => t.char === charToUndo && t.used);
+      if (trayIndex !== -1) {
+        const newTray = [...trayLetters];
+        newTray[trayIndex] = { ...newTray[trayIndex], used: false };
+        setTrayLetters(newTray);
+      }
+      
+      // Movemos el cursor a la celda borrada
+      setActiveRow(targetR);
+      setActiveCol(targetC);
     }
   };
 
   const handleCellPress = (r: number, c: number) => {
+    let newDirection = directionAcross;
     if (activeRow === r && activeCol === c) {
-      setDirectionAcross(!directionAcross);
+      newDirection = !directionAcross;
+      setDirectionAcross(newDirection);
     } else {
       setActiveRow(r);
       setActiveCol(c);
     }
-  };
 
-  const getActiveClue = () => {
-    if (activeRow === null || activeCol === null) return null;
-    const clueList = directionAcross ? acrossClues : downClues;
-    return clueList.find(c => {
-      if (directionAcross) {
-        return c.row === activeRow && activeCol >= c.col && activeCol < c.col + c.word.length;
-      } else {
-        return c.col === activeCol && activeRow >= c.row && activeRow < c.row + c.word.length;
+    const clueList = newDirection ? acrossClues : downClues;
+    let clueToSet = clueList.find(cl => 
+      newDirection 
+        ? (cl.row === r && c >= cl.col && c < cl.col + cl.word.length)
+        : (cl.col === c && r >= cl.row && r < cl.row + cl.word.length)
+    );
+    
+    // Fallback si tocaste una letra de intersección pero no hay palabra en esa dirección
+    if (!clueToSet) {
+      const otherList = newDirection ? downClues : acrossClues;
+      clueToSet = otherList.find(cl => 
+        !newDirection 
+          ? (cl.row === r && c >= cl.col && c < cl.col + cl.word.length)
+          : (cl.col === c && r >= cl.row && r < cl.row + cl.word.length)
+      );
+      if (clueToSet) {
+        setDirectionAcross(!newDirection);
       }
-    });
+    }
+
+    if (clueToSet && clueToSet.word !== activeClue?.word) {
+      setupActiveWord(clueToSet);
+    }
   };
 
   const handleRevealHint = () => {
@@ -205,7 +270,9 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
     setDirectionAcross(isAcross);
     setActiveRow(clue.row);
     setActiveCol(clue.col);
-    inputsRef.current[clue.row][clue.col]?.focus();
+    if (clue.word !== activeClue?.word) {
+      setupActiveWord(clue);
+    }
   };
 
   const checkWin = () => {
@@ -215,7 +282,10 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
       newValGrid[r] = [...newValGrid[r]];
       for (let c = 0; c < gridSize; c++) {
         if (!grid[r][c].isBlack) {
-          if (userGrid[r][c] === grid[r][c].letter) {
+          if (userGrid[r][c] === '') {
+            newValGrid[r][c] = 'none';
+            allCorrect = false;
+          } else if (userGrid[r][c] === grid[r][c].letter) {
             newValGrid[r][c] = 'correct';
           } else {
             newValGrid[r][c] = 'incorrect';
@@ -232,7 +302,7 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
   };
 
   if (showSummary) {
-    const expGain = 30; // base exp for crossword
+    const expGain = Math.max(10, 40 - (hintsUsed * 2));
     return (
       <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center' }]}>
         <Text style={[styles.titleSuccess, isDarkMode && { color: '#2ed573' }]}>¡Crucigrama Completado! 🎉</Text>
@@ -250,7 +320,7 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
             onPress={() => {
               const played = [...acrossClues, ...downClues].map(c => c.word.toLowerCase());
               setRecentWords(prev => [...prev, ...played].slice(-30));
-              onNextLevel();
+              onNextLevel(expGain);
               loadData();
             }}
           >
@@ -306,19 +376,20 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
           </View>
         </View>
 
-        {getActiveClue() && (
+        {activeClue && (
           <View style={[styles.activeClueBar, { backgroundColor: isDarkMode ? '#2c2c54' : '#eef2f5', borderColor: colors.border }]}>
             <Text style={[styles.activeClueText, { color: colors.text }]}>
-              {getActiveClue()?.number}. {getActiveClue()?.clue}
+              {activeClue.number}. {activeClue.clue}
             </Text>
           </View>
         )}
 
-        <View style={styles.gridContainer}>
-          {grid.map((row, r) => (
-            <View key={`row-${r}`} style={styles.row}>
-              {row.map((cell, c) => {
-                const cellSize = Math.floor((width - 40) / gridSize);
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20 }}>
+          <View style={styles.gridContainer}>
+            {grid.map((row, r) => (
+              <View key={`row-${r}`} style={styles.row}>
+                {row.map((cell, c) => {
+                  const cellSize = Math.max(40, Math.floor((width - 40) / gridSize));
                 const valStatus = validationGrid[r]?.[c] || 'none';
                 
                 let bgColor = cell.isBlack ? (isDarkMode ? '#1e1e1e' : '#e0e0e0') : (isDarkMode ? '#2c2c54' : '#fff');
@@ -345,21 +416,15 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
                     {!cell.isBlack && (
                       <>
                         {cell.number && <Text style={[styles.cellNumber, { color: textColor }]}>{cell.number}</Text>}
-                        <TextInput
-                          ref={el => {
-                            if (!inputsRef.current[r]) inputsRef.current[r] = [];
-                            inputsRef.current[r][c] = el;
-                          }}
-                          style={[styles.cellInput, { color: textColor, fontSize: cellSize * 0.4 }]}
-                          maxLength={2}
-                          value={userGrid[r]?.[c] || ''}
-                          onChangeText={(text) => handleTextChange(text, r, c)}
-                          onKeyPress={(e) => handleKeyPress(e, r, c)}
-                          onPressIn={() => handleCellPress(r, c)}
-                          autoCapitalize="characters"
-                          autoCorrect={false}
-                          selectTextOnFocus={true}
-                        />
+                        <TouchableOpacity 
+                          style={styles.cellTouch} 
+                          onPress={() => handleCellPress(r, c)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.cellText, { color: textColor, fontSize: cellSize * 0.4 }]}>
+                            {userGrid[r]?.[c] || ''}
+                          </Text>
+                        </TouchableOpacity>
                       </>
                     )}
                   </View>
@@ -367,7 +432,8 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
               })}
             </View>
           ))}
-        </View>
+          </View>
+        </ScrollView>
 
         <View style={styles.cluesContainer}>
           <View style={styles.clueColumn}>
@@ -397,6 +463,32 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
             })}
           </View>
         </View>
+
+        <View style={styles.trayContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.trayScroll}>
+            {trayLetters.map((trayItem, index) => (
+              <TouchableOpacity
+                key={trayItem.id}
+                style={[
+                  styles.trayTile, 
+                  { 
+                    backgroundColor: trayItem.used ? 'transparent' : colors.accent,
+                    borderColor: trayItem.used ? colors.border : colors.accent,
+                    borderWidth: 2
+                  }
+                ]}
+                onPress={() => handleTrayLetterPress(trayItem, index)}
+                disabled={trayItem.used}
+                activeOpacity={0.7}
+              >
+                {!trayItem.used && <Text style={styles.trayTileText}>{trayItem.char}</Text>}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={[styles.trayUndoBtn, { backgroundColor: isDarkMode ? '#333' : '#e0e0e0' }]} onPress={handleBackspace}>
+            <Ionicons name="backspace-outline" size={24} color={colors.text} />
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -415,11 +507,17 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row' },
   cell: { borderWidth: 0.5, justifyContent: 'center', alignItems: 'center' },
   cellNumber: { position: 'absolute', top: 2, left: 2, fontSize: 10, opacity: 0.7, zIndex: 1 },
-  cellInput: { width: '100%', height: '100%', textAlign: 'center', fontWeight: 'bold' },
+  cellTouch: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' },
+  cellText: { fontWeight: 'bold' },
   cluesContainer: { flexDirection: 'row', paddingHorizontal: 20, marginTop: 20, justifyContent: 'space-between' },
   clueColumn: { flex: 1, paddingRight: 10 },
   clueTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 8 },
   clueText: { fontSize: 14, marginBottom: 6, lineHeight: 20 },
+  trayContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginTop: 30, marginBottom: 20 },
+  trayScroll: { flexGrow: 1, justifyContent: 'center', alignItems: 'center' },
+  trayTile: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginHorizontal: 6 },
+  trayTileText: { fontSize: 20, fontWeight: 'bold', color: '#FFF' },
+  trayUndoBtn: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginLeft: 15 },
   
   // Summary Styles
   titleSuccess: { fontSize: 28, fontWeight: '800', textAlign: 'center', marginBottom: 20 },

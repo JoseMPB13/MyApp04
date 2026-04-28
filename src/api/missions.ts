@@ -1,5 +1,4 @@
 import { supabase } from './supabase';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface StreakData {
   current_streak: number;
@@ -114,29 +113,63 @@ export const MissionsService = {
   },
 
   /**
-   * Obtiene la experiencia actual del Matcher guardada en AsyncStorage.
+   * Obtiene el progreso del usuario desde Supabase.
+   * Si no existe, lo inicializa.
    */
-  async getMatcherExp(userId: string): Promise<number> {
+  async getUserProgress(userId: string): Promise<{ total_exp: number; current_level: number }> {
     try {
-      const val = await AsyncStorage.getItem(`matcher_exp_${userId}`);
-      if (val) return parseInt(val, 10);
-      return 0;
-    } catch {
-      return 0;
+      const { data, error } = await supabase
+        .from('user_progress')
+        .select('total_exp, current_level')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+
+      if (data) {
+        return { total_exp: data.total_exp, current_level: data.current_level };
+      }
+
+      // No existe, inicializar
+      const { data: insertData, error: insertError } = await supabase
+        .from('user_progress')
+        .insert([{ user_id: userId, total_exp: 0, current_level: 1 }])
+        .select('total_exp, current_level')
+        .single();
+
+      if (insertError) throw insertError;
+
+      return { total_exp: insertData.total_exp, current_level: insertData.current_level };
+    } catch (error) {
+      console.error('Error in getUserProgress:', error);
+      return { total_exp: 0, current_level: 1 };
     }
   },
 
   /**
-   * Añade experiencia al Matcher y la guarda.
+   * Añade experiencia al usuario y actualiza su nivel en Supabase.
    */
-  async addMatcherExp(userId: string, amount: number): Promise<number> {
+  async addUserExp(userId: string, amount: number): Promise<{ level: number; exp: number }> {
     try {
-      const current = await MissionsService.getMatcherExp(userId);
-      const next = current + amount;
-      await AsyncStorage.setItem(`matcher_exp_${userId}`, next.toString());
-      return next;
-    } catch {
-      return 0;
+      const progress = await MissionsService.getUserProgress(userId);
+      const newExp = progress.total_exp + amount;
+      const newLevel = Math.floor(newExp / 100) + 1;
+
+      const { error } = await supabase
+        .from('user_progress')
+        .update({ 
+          total_exp: newExp, 
+          current_level: newLevel,
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      return { level: newLevel, exp: newExp };
+    } catch (error) {
+      console.error('Error in addUserExp:', error);
+      return { level: 1, exp: 0 };
     }
   },
 

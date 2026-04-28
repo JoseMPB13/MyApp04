@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -32,14 +32,22 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
   const [isGenerating, setIsGenerating] = useState(false);
   const [recentWords, setRecentWords] = useState<string[]>([]);
 
+  useEffect(() => {
+    if (currentMission === null) {
+      MissionsService.getUserProgress(userId).then((progress) => {
+        setCurrentExp(progress.total_exp);
+        setCurrentLevel(progress.current_level);
+      });
+    }
+  }, [currentMission, userId]);
+
   const loadLessonWords = async (overrideRecent?: string[]) => {
     setIsGenerating(true);
     try {
-      const exp = await MissionsService.getMatcherExp(userId);
-      const level = MissionsService.getLevelFromExp(exp);
-      setCurrentExp(exp);
-      setCurrentLevel(level);
-      console.log("🚀 [ACTIVITIES] Iniciando carga de palabras. Exp:", exp, "Nivel:", level);
+      const progress = await MissionsService.getUserProgress(userId);
+      setCurrentExp(progress.total_exp);
+      setCurrentLevel(progress.current_level);
+      console.log("🚀 [ACTIVITIES] Iniciando carga de palabras. Exp:", progress.total_exp, "Nivel:", progress.current_level);
       
       const currentRecent = overrideRecent || recentWords;
       const vaultWords = await VaultService.getWords(userId);
@@ -93,14 +101,18 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
             exp={currentExp}
             onNextLevel={async (matched, maxCombo) => {
               const expGain = 25 + (maxCombo * 5);
-              await MissionsService.addMatcherExp(userId, expGain);
+              const { exp, level } = await MissionsService.addUserExp(userId, expGain);
+              setCurrentExp(exp);
+              setCurrentLevel(level);
               const newRecent = [...recentWords, ...matched.map(w => w.translation.toLowerCase())].slice(-25);
               setRecentWords(newRecent);
               loadLessonWords(newRecent);
             }}
             onExit={async (matched, maxCombo) => {
               const expGain = 25 + (maxCombo * 5);
-              await MissionsService.addMatcherExp(userId, expGain);
+              const { exp, level } = await MissionsService.addUserExp(userId, expGain);
+              setCurrentExp(exp);
+              setCurrentLevel(level);
               setCurrentMission(null);
               onMissionStateChange(false);
               onComplete('word-matcher', { matched, expGain });
@@ -143,14 +155,15 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
           userId={userId}
           level={currentLevel}
           exp={currentExp}
-          onNextLevel={() => {
-            const expGain = 30;
-            MissionsService.addMatcherExp(userId, expGain).then(() => {
-              setCurrentExp(prev => prev + expGain);
-            });
+          onNextLevel={async (expGain: number) => {
+            const { exp, level } = await MissionsService.addUserExp(userId, expGain);
+            setCurrentExp(exp);
+            setCurrentLevel(level);
           }}
-          onExit={async (expGain) => {
-            await MissionsService.addMatcherExp(userId, expGain);
+          onExit={async (expGain: number) => {
+            const { exp, level } = await MissionsService.addUserExp(userId, expGain);
+            setCurrentExp(exp);
+            setCurrentLevel(level);
             setCurrentMission(null);
             onMissionStateChange(false);
             onComplete('crossword', { expGain });

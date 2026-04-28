@@ -24,8 +24,22 @@ export function generateGrid(items: CrosswordItem[], gridSize: number = 8) {
   const acrossClues: ClueInfo[] = [];
   const downClues: ClueInfo[] = [];
   
+  // Saneamiento: Eliminar palabras muy largas y convertir a mayúsculas
+  const sanitizedItems = items
+    .filter(item => item.word && item.word.length <= gridSize)
+    .map(item => ({ ...item, word: item.word.toUpperCase() }));
+
+  // Eliminar duplicados
+  const uniqueItemsMap = new Map<string, CrosswordItem>();
+  sanitizedItems.forEach(item => {
+    if (!uniqueItemsMap.has(item.word)) {
+      uniqueItemsMap.set(item.word, item);
+    }
+  });
+  const uniqueItems = Array.from(uniqueItemsMap.values());
+  
   // Ordenar palabras de mayor a menor longitud
-  const sortedItems = [...items].sort((a, b) => b.word.length - a.word.length);
+  const sortedItems = [...uniqueItems].sort((a, b) => b.word.length - a.word.length);
   let clueNumber = 1;
 
   const canPlaceWord = (word: string, r: number, c: number, dr: number, dc: number) => {
@@ -165,7 +179,7 @@ export function generateGrid(items: CrosswordItem[], gridSize: number = 8) {
   }
 
   if (placedCount < 3) {
-    throw new Error('No se pudieron cruzar suficientes palabras');
+    console.warn(`Solo se pudieron cruzar ${placedCount} palabras. Retornando cuadrícula parcial.`);
   }
 
   return { grid, acrossClues, downClues };
