@@ -14,6 +14,7 @@ import { MissionsService } from '../api/missions';
 import { AITutorService } from '../api/ai_tutor';
 import WordMatcher from '../components/games/WordMatcher';
 import AIScenario from '../components/games/AIScenario';
+import CrosswordGame from '../components/games/CrosswordGame';
 import { useAppTheme } from '../context/ThemeContext';
 
 interface ActivitiesSectionProps {
@@ -128,6 +129,37 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
     );
   }
 
+  if (currentMission === 'crossword') {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <TouchableOpacity onPress={() => {
+          setCurrentMission(null);
+          onMissionStateChange(false);
+        }} style={styles.backButton}>
+           <Ionicons name="arrow-back" size={24} color="#575fcf" />
+           <Text style={styles.backText}>Volver</Text>
+        </TouchableOpacity>
+        <CrosswordGame
+          userId={userId}
+          level={currentLevel}
+          exp={currentExp}
+          onNextLevel={() => {
+            const expGain = 30;
+            MissionsService.addMatcherExp(userId, expGain).then(() => {
+              setCurrentExp(prev => prev + expGain);
+            });
+          }}
+          onExit={async (expGain) => {
+            await MissionsService.addMatcherExp(userId, expGain);
+            setCurrentMission(null);
+            onMissionStateChange(false);
+            onComplete('crossword', { expGain });
+          }}
+        />
+      </View>
+    );
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.sectionPadding}>
       <Text style={[styles.sectionTitle, { color: colors.text }]}>Misiones Diarias</Text>
@@ -157,6 +189,20 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
           <Text style={[styles.missionDesc, { color: colors.text, opacity: 0.6 }]}>Conversa y aprende con tu guía interactivo</Text>
         </View>
         <Ionicons name="play-circle" size={32} color="#ff4757" />
+      </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={[styles.missionCard, styles.cardShadow, { backgroundColor: colors.card }]}
+        onPress={() => handleStartMission('crossword')}
+      >
+        <View style={[styles.missionIcon, { backgroundColor: isDarkMode ? '#2c2c54' : '#eef1ff' }]}>
+          <Ionicons name="apps" size={32} color={colors.accent} />
+        </View>
+        <View style={styles.missionInfo}>
+          <Text style={[styles.missionTitle, { color: colors.text }]}>Mini Crucigrama</Text>
+          <Text style={[styles.missionDesc, { color: colors.text, opacity: 0.6 }]}>Resuelve pistas y completa el tablero</Text>
+        </View>
+        <Ionicons name="play-circle" size={32} color={colors.accent} />
       </TouchableOpacity>
     </ScrollView>
   );

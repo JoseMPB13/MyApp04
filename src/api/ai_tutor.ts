@@ -28,6 +28,11 @@ export interface WordPair {
   inVault?: boolean;
 }
 
+export interface CrosswordItem {
+  word: string;
+  clue: string;
+}
+
 const fetchGroq = async (messages: any[], temperature: number = 0.7) => {
   const response = await fetch(API_URL, {
     method: 'POST',
@@ -339,6 +344,40 @@ FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
           naturalness: "No disponible"
         }
       };
+    }
+  },
+
+  generateCrosswordData: async (level: number, vaultWords: string[]): Promise<CrosswordItem[]> => {
+    const systemPrompt = `
+      Genera exactamente 5 palabras en inglés con sus pistas en español para un mini crucigrama.
+      REGLA 1: Las palabras en inglés deben ser cortas (entre 3 y 6 letras máximo).
+      REGLA 2: Devuelve palabras de diccionario reales, todo en MAYÚSCULAS.
+      REGLA 3: La 'clue' (pista) debe ser una oración corta o definición en español.
+      Mezcla palabras del baúl del usuario: [${vaultWords.slice(0, 5).join(', ')}] con palabras nuevas.
+      
+      FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON):
+      {
+        "items": [
+          { "word": "APPLE", "clue": "Fruta roja o verde que cruje al morder." }
+        ]
+      }
+    `;
+
+    try {
+      const data = await fetchGroq([{ role: 'system', content: systemPrompt }], 0.2);
+      if (data.items && Array.isArray(data.items)) {
+        return data.items;
+      }
+      throw new Error('Formato de respuesta inválido');
+    } catch (error) {
+      console.error('AITutorService.generateCrosswordData Error:', error);
+      return [
+        { word: 'CAT', clue: 'Mascota felina que maúlla.' },
+        { word: 'SUN', clue: 'Estrella que ilumina el día.' },
+        { word: 'BOOK', clue: 'Objeto con páginas para leer.' },
+        { word: 'TREE', clue: 'Planta alta con tronco de madera.' },
+        { word: 'WATER', clue: 'Líquido vital transparente.' }
+      ];
     }
   },
 
