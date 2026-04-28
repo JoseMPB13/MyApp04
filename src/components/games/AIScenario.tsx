@@ -20,11 +20,20 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Speech from 'expo-speech';
 import { Ionicons } from '@expo/vector-icons';
-import { AITutorService, FeedbackCapsule as FeedbackType } from '../../api/ai_tutor';
+import { AITutorService, FeedbackCapsule as FeedbackType, Correction } from '../../api/ai_tutor';
 import { VaultService } from '../../api/vault';
 import { useAppTheme } from '../../context/ThemeContext';
 
-type Phase = 'SELECT_CATEGORY' | 'SELECT_TOPIC' | 'CHAT';
+type Phase = 'SELECT_MISSION' | 'CHAT';
+
+interface Mission {
+  id: number;
+  title: string;
+  description: string;
+  icon: any;
+  color: string;
+  scenarioGoal: string;
+}
 
 /**
  * Elimina emojis, caracteres especiales y bloques no-ASCII que rompen
@@ -53,28 +62,37 @@ interface Message {
   sender: 'user' | 'ai';
   translation?: string;
   feedback?: FeedbackType;
+  corrections?: Correction[];
+  suggested_reply_en?: string;
+  suggested_reply_es?: string;
 }
 
-const FeedbackCapsule = ({ feedback }: { feedback: FeedbackType }) => {
+// Tutor Note: shows inline corrections with a teacher-style left border
+const TutorNote = ({ corrections }: { corrections: Correction[] }) => {
   const { colors, isDarkMode } = useAppTheme();
+  if (!corrections || corrections.length === 0) return null;
   return (
-    <View style={[styles.feedbackContainer, { backgroundColor: isDarkMode ? '#281a3a' : '#f8f4ff', borderColor: isDarkMode ? '#4b2c6e' : '#efe5ff' }]}>
-      <View style={styles.feedbackHeader}>
-        <Ionicons name="bulb" size={20} color={colors.accent} />
-        <Text style={[styles.feedbackHeaderText, { color: colors.accent }]}>Análisis de tu mensaje anterior</Text>
+    <View style={[
+      styles.tutorNote,
+      { 
+        backgroundColor: isDarkMode ? '#2a1a0a' : '#fff8f0',
+        borderColor: isDarkMode ? '#8a4a0a' : '#ffd0a0',
+      }
+    ]}>
+      <View style={styles.tutorNoteHeader}>
+        <Ionicons name="school" size={14} color="#e17055" />
+        <Text style={styles.tutorNoteTitle}>Nota del Tutor</Text>
       </View>
-      <View style={styles.feedbackItem}>
-        <Text style={[styles.feedbackLabel, isDarkMode && { color: '#a29bfe' }]}>Gramática:</Text>
-        <Text style={[styles.feedbackValue, { color: colors.text }]}>{feedback.grammar}</Text>
-      </View>
-      <View style={styles.feedbackItem}>
-        <Text style={[styles.feedbackLabel, isDarkMode && { color: '#a29bfe' }]}>Vocabulario:</Text>
-        <Text style={[styles.feedbackValue, { color: colors.text }]}>{feedback.vocabulary}</Text>
-      </View>
-      <View style={styles.feedbackItem}>
-        <Text style={[styles.feedbackLabel, isDarkMode && { color: '#a29bfe' }]}>Naturalidad:</Text>
-        <Text style={[styles.feedbackValue, { color: colors.text }]}>{feedback.naturalness}</Text>
-      </View>
+      {corrections.map((c, i) => (
+        <View key={i} style={i > 0 && { marginTop: 8 }}>
+          <View style={styles.correctionRow}>
+            <Text style={styles.correctionWrong}>{c.original}</Text>
+            <Ionicons name="arrow-forward" size={11} color="#95a5a6" style={{ marginHorizontal: 5 }} />
+            <Text style={styles.correctionRight}>{c.corrected}</Text>
+          </View>
+          <Text style={[styles.correctionExplanation, { color: colors.text }]}>{c.explanation}</Text>
+        </View>
+      ))}
     </View>
   );
 };
@@ -86,7 +104,7 @@ const TypingBubble = () => {
   const dot3 = useSharedValue(0);
 
   useEffect(() => {
-    const anim = (sv: any, delay: number) => {
+    const anim = (sv: Animated.SharedValue<number>, delay: number) => {
       sv.value = withDelay(delay, withRepeat(
         withSequence(
           withTiming(-6, { duration: 300 }),
@@ -99,44 +117,78 @@ const TypingBubble = () => {
     anim(dot1, 0);
     anim(dot2, 150);
     anim(dot3, 300);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const animatedStyle = (sv: any) => useAnimatedStyle(() => ({
-    transform: [{ translateY: sv.value }]
-  }));
+  // Each dot needs its own top-level useAnimatedStyle call (Rules of Hooks)
+  const style1 = useAnimatedStyle(() => ({ transform: [{ translateY: dot1.value }] }));
+  const style2 = useAnimatedStyle(() => ({ transform: [{ translateY: dot2.value }] }));
+  const style3 = useAnimatedStyle(() => ({ transform: [{ translateY: dot3.value }] }));
 
   return (
     <View style={[styles.aiBubble, styles.typingBubble, { backgroundColor: colors.card }]}>
-      <Animated.View style={[styles.dot, { backgroundColor: colors.text, opacity: 0.4 }, animatedStyle(dot1)]} />
-      <Animated.View style={[styles.dot, { backgroundColor: colors.text, opacity: 0.4 }, animatedStyle(dot2)]} />
-      <Animated.View style={[styles.dot, { backgroundColor: colors.text, opacity: 0.4 }, animatedStyle(dot3)]} />
+      <Animated.View style={[styles.dot, { backgroundColor: colors.text, opacity: 0.4 }, style1]} />
+      <Animated.View style={[styles.dot, { backgroundColor: colors.text, opacity: 0.4 }, style2]} />
+      <Animated.View style={[styles.dot, { backgroundColor: colors.text, opacity: 0.4 }, style3]} />
     </View>
   );
 };
 
 export default function AIScenario({ onComplete, userId }: { onComplete: () => void; userId: string }) {
   const { colors, isDarkMode } = useAppTheme();
-  const [phase, setPhase] = useState<Phase>('SELECT_CATEGORY');
-  const [categories, setCategories] = useState<string[]>([]);
-  const [topics, setTopics] = useState<string[]>([]);
-  
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>('SELECT_MISSION');
   const [vaultWords, setVaultWords] = useState<string[]>([]);
+  const [activeMission, setActiveMission] = useState<Mission | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [turnCount, setTurnCount] = useState(1);
   const [visibleTranslations, setVisibleTranslations] = useState<{[key: string]: boolean}>({});
-  const [currentHint, setCurrentHint] = useState<string | null>(null);
-  const [showHintModal, setShowHintModal] = useState(false);
+  const [currentHint, setCurrentHint] = useState<{ en: string; es: string } | null>(null);
+  const [showHint, setShowHint] = useState(false);
   const [perfectGrammarMsgId, setPerfectGrammarMsgId] = useState<string | null>(null);
   const [bonusExpVisible, setBonusExpVisible] = useState(false);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
 
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
+
+  // Misiones de rol estáticas — cubren escenarios universales de A1/A2
+  const MISSIONS: Mission[] = [
+    {
+      id: 1,
+      title: "Coffee Shop",
+      description: "Ordena tu desayuno favorito",
+      icon: "cafe",
+      color: "#e17055",
+      scenarioGoal: "Role-play: the student is ordering breakfast at a coffee shop. Use food and drink vocabulary.",
+    },
+    {
+      id: 2,
+      title: "New Friend",
+      description: "Preséntate a alguien nuevo",
+      icon: "people",
+      color: "#0984e3",
+      scenarioGoal: "Role-play: the student is meeting someone new and introducing themselves. Use greetings, hobbies, and basic personal info vocabulary.",
+    },
+    {
+      id: 3,
+      title: "City Explorer",
+      description: "Pide direcciones en la ciudad",
+      icon: "map",
+      color: "#00b894",
+      scenarioGoal: "Role-play: the student is lost in a city and needs to ask for and understand directions. Use location and direction vocabulary.",
+    },
+    {
+      id: 4,
+      title: "Shopping",
+      description: "Compra ropa en una tienda",
+      icon: "bag-handle",
+      color: "#6c5ce7",
+      scenarioGoal: "Role-play: the student is shopping for clothes. Use clothing, sizes, colors, and price vocabulary.",
+    },
+  ];
 
   useEffect(() => {
     if (phase === 'CHAT' && messages.length > 0) {
@@ -148,52 +200,40 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
   }, [messages.length, phase]);
 
   useEffect(() => {
-    const loadCategories = async () => {
+    const loadVault = async () => {
       setLoading(true);
-      const words = await VaultService.getWords(userId);
-      // Extraer palabras en aprendizaje
-      const learning = words.filter(w => w.status !== 'mastered');
-      setVaultWords(learning.map(w => w.word_en));
-
-      // Extraer categorías únicas
-      let uniqueCategories = Array.from(new Set(learning.map(w => w.category).filter(Boolean))) as string[];
-      
-      // Fallback si no hay categorías
-      if (uniqueCategories.length === 0) {
-        uniqueCategories = ['General', 'Viajes', 'Comida'];
+      try {
+        const words = await VaultService.getWords(userId);
+        const learning = words.filter(w => w.status !== 'mastered');
+        setVaultWords(learning.map(w => w.word_en));
+      } catch {
+        setVaultWords([]);
+      } finally {
+        setLoading(false);
       }
-
-      setCategories(uniqueCategories.slice(0, 5)); // Mostrar max 5
-      setLoading(false);
     };
-
-    loadCategories();
+    loadVault();
   }, [userId]);
 
-  const handleSelectCategory = async (cat: string) => {
-    setSelectedCategory(cat);
-    setPhase('SELECT_TOPIC');
-    setLoading(true);
-    
-    const generatedTopics = await AITutorService.generateTopicsForCategory(cat);
-    setTopics(generatedTopics);
-    setLoading(false);
-  };
-
-  const handleSelectTopic = async (topic: string) => {
-    setSelectedTopic(topic);
+  const handleStartMission = async (mission: Mission) => {
+    setActiveMission(mission);
     setPhase('CHAT');
     setLoading(true);
+    setMessages([]);
+    setTurnCount(1);
+    setCurrentHint(null);
+
+    const vaultContext = vaultWords.length > 0
+      ? `Also, try to naturally incorporate some of these vocabulary words from the student's personal vault: [${vaultWords.slice(0, 5).join(', ')}].`
+      : 'The student is a complete beginner. Use only the most basic vocabulary.';
 
     try {
-      // Ice Breaker: la IA toma la iniciativa y genera la apertura
       const iceBreaker = await AITutorService.getLessonResponse(
-        [{ id: 'system-init', text: `[INSTRUCCIÓN INTERNA: Eres Raccoon 🦝, un tutor amigable. Preséntate brevemente y haz UNA pregunta específica y abierta sobre el tema "${topic}" para iniciar la conversación. NO evalúes nada todavía.]`, sender: 'user' }],
-        `Tema: ${topic}. Categoría: ${selectedCategory}. ${vaultWords.length === 0 ? 'El usuario es nuevo, usa vocabulario básico.' : `Palabras objetivo del usuario: [${vaultWords.slice(0, 5).join(', ')}].`}`,
+        [],
+        `${mission.scenarioGoal} ${vaultContext}`,
         vaultWords,
         0
       );
-
       const firstMsg: Message = {
         id: '1',
         text: iceBreaker.text,
@@ -201,16 +241,14 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
         translation: iceBreaker.translation,
       };
       setMessages([firstMsg]);
-      if (iceBreaker.suggested_reply) {
-        setCurrentHint(iceBreaker.suggested_reply);
-      }
-      console.log("\ud83d\udfe2 [CHAT] Ice-Breaker generado exitosamente");
+      const enHint = iceBreaker.suggested_reply_en || iceBreaker.suggested_reply || null;
+      const esHint = iceBreaker.suggested_reply_es || null;
+      if (enHint) setCurrentHint({ en: enHint, es: esHint ?? '' });
+      else setCurrentHint(null);
+      console.log("\ud83d\udfe2 [CHAT] Ice-Breaker generado para misión:", mission.title);
     } catch {
-      // Fallback estático si la IA falla
-      const fallbackText = vaultWords.length === 0
-        ? `Hi, I'm Raccoon 🦝! Your vocabulary vault is empty, but no worries! Let's warm up. How are you feeling today?`
-        : `Hi, I'm Raccoon 🦝! Let's talk about "${topic}". What's the first thing that comes to mind?`;
-      setMessages([{ id: '1', text: fallbackText, sender: 'ai', translation: '¡Hola! Soy Raccoon. Hablemos.' }]);
+      const fallbackText = `Hi! I'm Coach Raccoon. Let's practice your English together! ${mission.scenarioGoal.split('.')[0]}. Are you ready?`;
+      setMessages([{ id: '1', text: fallbackText, sender: 'ai', translation: '¡Hola! Soy el Coach Raccoon. ¡Practiquemos inglés juntos! ¿Estás listo?' }]);
     } finally {
       setLoading(false);
     }
@@ -235,7 +273,7 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
     try {
       const response = await AITutorService.getLessonResponse(
         newMessages,
-        `Tema: ${selectedTopic}. Categoría de palabras: ${selectedCategory}.`,
+        activeMission?.scenarioGoal ?? 'General English conversation practice.',
         vaultWords,
         turnCount
       );
@@ -245,12 +283,19 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
         text: response.text,
         sender: 'ai',
         translation: response.translation,
-        feedback: response.feedbackCapsule
+        feedback: response.feedbackCapsule,
+        corrections: response.corrections,
+        suggested_reply_en: response.suggested_reply_en,
+        suggested_reply_es: response.suggested_reply_es,
       };
 
-      // Detección de gramática perfecta
-      const grammar = response.feedbackCapsule?.grammar?.toLowerCase() ?? '';
-      const isPerfect = grammar.includes('perfecto') || grammar.includes('excelente') || grammar.includes('correcto') || grammar.includes('sin errores');
+      // Detección de gramática perfecta (basada en ausencia de correcciones)
+      const hasPerfectGrammar = !response.corrections || response.corrections.length === 0;
+      const isPerfect = hasPerfectGrammar && (response.feedbackCapsule?.grammar?.toLowerCase().includes('perfecto') ||
+        response.feedbackCapsule?.grammar?.toLowerCase().includes('excelente') ||
+        response.feedbackCapsule?.grammar?.toLowerCase().includes('correcto') ||
+        response.feedbackCapsule?.grammar?.toLowerCase().includes('sin errores') ||
+        hasPerfectGrammar);
       if (isPerfect) {
         setPerfectGrammarMsgId(userMsg.id);
         setBonusExpVisible(true);
@@ -262,7 +307,9 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
 
       setMessages(prev => [...prev, aiMsg]);
       setTurnCount(prev => prev + 1);
-      if (response.suggested_reply) setCurrentHint(response.suggested_reply);
+      const enHint = response.suggested_reply_en || response.suggested_reply || null;
+      const esHint = response.suggested_reply_es || null;
+      if (enHint) { setCurrentHint({ en: enHint, es: esHint ?? '' }); setShowHint(false); }
       else setCurrentHint(null);
     } catch (error) {
       console.error("AI Lesson Error:", error);
@@ -282,67 +329,40 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
       return (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#575fcf" />
-          <Text style={styles.loadingText}>
-            {phase === 'SELECT_TOPIC' ? 'Generando temas con IA...' : 'Cargando tu Baúl...'}
-          </Text>
+          <Text style={styles.loadingText}>Cargando tu sesión...</Text>
         </View>
       );
     }
 
-    if (phase === 'SELECT_CATEGORY') {
-      const catIcons: Record<number, any> = { 0: 'star', 1: 'airplane', 2: 'restaurant', 3: 'briefcase', 4: 'leaf' };
-      const catColors = ['#575fcf', '#ff6b6b', '#05c46b', '#ff9f43', '#0984e3'];
+    if (phase === 'SELECT_MISSION') {
       return (
         <ScrollView contentContainerStyle={styles.selectionContainer}>
-          <Text style={[styles.phaseTitle, { color: colors.text }]}>¿Sobre qué quieres hablar?</Text>
-          <Text style={styles.phaseSubtitle}>Basado en tu baúl de vocabulario</Text>
-          <View style={styles.bentoGrid}>
-            {categories.map((cat, i) => (
-              <TouchableOpacity 
-                key={i} 
+          <Text style={[styles.phaseTitle, { color: colors.text }]}>Elige tu Misión 🎯</Text>
+          <Text style={styles.phaseSubtitle}>1 toque · IA te da el primer mensaje</Text>
+          <View style={styles.missionGrid}>
+            {MISSIONS.map((mission, i) => (
+              <TouchableOpacity
+                key={mission.id}
                 style={[
-                  styles.bentoCatCard, 
-                  styles.cardShadow, 
+                  styles.missionCard,
+                  styles.cardShadow,
                   { backgroundColor: colors.card, borderColor: colors.border },
-                  i === 0 && styles.bentoCatCardWide
-                ]} 
-                onPress={() => handleSelectCategory(cat)}
+                  i === 0 && styles.missionCardWide,
+                ]}
+                onPress={() => handleStartMission(mission)}
+                activeOpacity={0.85}
               >
-                <View style={[styles.bentoCatIcon, { backgroundColor: catColors[i % catColors.length] + '22' }]}>
-                  <Ionicons name={catIcons[i] || 'ellipse'} size={28} color={catColors[i % catColors.length]} />
+                <View style={[styles.missionIconBg, { backgroundColor: mission.color + '20' }]}>
+                  <Ionicons name={mission.icon} size={32} color={mission.color} />
                 </View>
-                <Text style={[styles.bentoCatText, { color: colors.text }]}>{cat}</Text>
-                <Text style={[styles.bentoCatSub, { color: colors.text }]}>Toca para elegir →</Text>
+                <Text style={[styles.missionTitle, { color: colors.text }]}>{mission.title}</Text>
+                <Text style={[styles.missionDesc, { color: colors.text }]}>{mission.description}</Text>
+                <View style={[styles.missionStartBadge, { backgroundColor: mission.color }]}>
+                  <Text style={styles.missionStartLabel}>▶ Empezar</Text>
+                </View>
               </TouchableOpacity>
             ))}
           </View>
-        </ScrollView>
-      );
-    }
-
-    if (phase === 'SELECT_TOPIC') {
-      return (
-        <ScrollView contentContainerStyle={styles.selectionContainer}>
-          <Text style={[styles.phaseTitle, { color: colors.text }]}>Elige tu escenario</Text>
-          <Text style={styles.phaseSubtitle}>Categoría: {selectedCategory}</Text>
-          {topics.map((topic, i) => (
-            <TouchableOpacity 
-              key={i} 
-              style={[styles.bentoTopicCard, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.border }]} 
-              onPress={() => handleSelectTopic(topic)}
-            >
-              <View style={styles.bentoTopicLeft}>
-                <Text style={styles.bentoTopicNumber}>0{i + 1}</Text>
-                <Text style={[styles.bentoTopicText, { color: colors.text }]}>{topic}</Text>
-              </View>
-              <View style={styles.bentoTopicPlay}>
-                <Ionicons name="play" size={16} color="#FFF" />
-              </View>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity style={styles.backLink} onPress={() => setPhase('SELECT_CATEGORY')}>
-            <Text style={styles.backLinkText}>← Volver a Categorías</Text>
-          </TouchableOpacity>
         </ScrollView>
       );
     }
@@ -351,9 +371,14 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <View style={[styles.progressHeader, { backgroundColor: colors.background }]}>
-          <Text style={[styles.progressText, { color: colors.accent }]}>Turno {Math.min(turnCount, 5)} de 5</Text>
-          <View style={[styles.progressBar, { backgroundColor: isDarkMode ? '#2c2c2c' : '#F0F2F5' }]}>
-            <View style={[styles.progressFill, { width: `${(Math.min(turnCount, 5) / 5) * 100}%` }]} />
+          <TouchableOpacity onPress={() => setPhase('SELECT_MISSION')} style={styles.backLinkBtn}>
+            <Ionicons name="arrow-back" size={20} color={colors.accent} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.progressText, { color: colors.accent }]}>{activeMission?.title} · Turno {Math.min(turnCount, 5)} de 5</Text>
+            <View style={[styles.progressBar, { backgroundColor: isDarkMode ? '#2c2c2c' : '#F0F2F5' }]}>
+              <View style={[styles.progressFill, { width: `${(Math.min(turnCount, 5) / 5) * 100}%` }]} />
+            </View>
           </View>
         </View>
 
@@ -367,7 +392,10 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
         >
           {messages.map((m) => (
             <View key={m.id} style={styles.messageWrapper}>
-              {m.feedback && <FeedbackCapsule feedback={m.feedback} />}
+              {/* Tutor Note: corrections shown just above the AI bubble */}
+              {m.sender === 'ai' && m.corrections && m.corrections.length > 0 && (
+                <TutorNote corrections={m.corrections} />
+              )}
               
               <View style={[
                 styles.bubble,
@@ -446,21 +474,32 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
                 <Text style={styles.bonusExpText}>✨ +5 EXP · Gramática Perfecta</Text>
               </View>
             )}
-            {currentHint && (
-              <View style={[styles.hintInline, { backgroundColor: isDarkMode ? '#1e1a2e' : '#f3eeff', borderColor: isDarkMode ? '#4b2c6e' : '#ddd2f8' }]}>
+
+            {/* Dual-language hint banner */}
+            {showHint && currentHint && (
+              <TouchableOpacity
+                style={[styles.hintInline, { backgroundColor: isDarkMode ? '#1e1a2e' : '#f3eeff', borderColor: isDarkMode ? '#4b2c6e' : '#ddd2f8' }]}
+                onPress={() => {
+                  console.log("\ud83d\udfe1 [CHAT] Pista inyectada en el input:", currentHint.en);
+                  setInputText(currentHint.en);
+                  setShowHint(false);
+                  inputRef.current?.focus();
+                }}
+                activeOpacity={0.8}
+              >
                 <Ionicons name="bulb" size={14} color="#f1c40f" />
-                <Text style={[styles.hintInlineText, { color: colors.text }]} numberOfLines={2}>{currentHint}</Text>
-                <TouchableOpacity
-                  style={styles.hintInjectBtn}
-                  onPress={() => {
-                    console.log("\ud83d\udfe1 [CHAT] Pista inyectada en el input:", currentHint);
-                    setInputText(currentHint ?? '');
-                    inputRef.current?.focus();
-                  }}
-                >
-                  <Text style={styles.hintInjectLabel}>Usar</Text>
-                </TouchableOpacity>
-              </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.hintInlineText, { color: colors.text }]}>
+                    {currentHint.en}
+                  </Text>
+                  {currentHint.es ? (
+                    <Text style={[styles.hintInlineSubtext, { color: colors.text }]}>
+                      ({currentHint.es})
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={styles.hintInjectLabel}>Usar →</Text>
+              </TouchableOpacity>
             )}
             <View style={[styles.inputArea, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
               <TextInput
@@ -475,14 +514,13 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
               />
               {currentHint && (
                 <TouchableOpacity 
-                  style={[styles.hintButton, { backgroundColor: isDarkMode ? '#2c2c2c' : '#F0F2F5', borderColor: colors.border }]}
-                  onPress={() => {
-                    console.log("\ud83d\udfe1 [CHAT] Pista inyectada en el input:", currentHint);
-                    setInputText(currentHint ?? '');
-                    inputRef.current?.focus();
-                  }}
+                  style={[styles.hintButton, { 
+                    backgroundColor: showHint ? '#f1c40f' : (isDarkMode ? '#2c2c2c' : '#F0F2F5'),
+                    borderColor: showHint ? '#f1c40f' : colors.border 
+                  }]}
+                  onPress={() => setShowHint(prev => !prev)}
                 >
-                  <Ionicons name="bulb" size={24} color="#f1c40f" />
+                  <Ionicons name="bulb" size={22} color={showHint ? '#1e1e1e' : '#f1c40f'} />
                 </TouchableOpacity>
               )}
               <TouchableOpacity 
@@ -508,12 +546,11 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
       <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Tiny Lesson</Text>
         <Text style={styles.headerSubtitle}>
-          {phase === 'CHAT' ? `Tema: ${selectedTopic}` : 'Práctica Rápida'}
+          {phase === 'CHAT' ? activeMission?.title ?? 'Tiny Lesson' : 'Práctica Rápida'}
         </Text>
       </View>
 
       {renderPhase()}
-
     </KeyboardAvoidingView>
   );
 }
@@ -531,42 +568,30 @@ const styles = StyleSheet.create({
   phaseTitle: { fontSize: 24, fontWeight: '900', color: '#1e272e', marginBottom: 6 },
   phaseSubtitle: { fontSize: 15, color: '#7f8c8d', marginBottom: 24, fontWeight: '500' },
 
-  // Bento Grid - Categorías
-  bentoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  bentoCatCard: {
+  // Mission selection grid
+  missionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  missionCard: {
     width: '47%',
     borderRadius: 24,
     borderWidth: 1.5,
     padding: 20,
-    minHeight: 130,
+    minHeight: 160,
     justifyContent: 'space-between',
   },
-  bentoCatCardWide: { width: '100%' },
-  bentoCatIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
-  bentoCatText: { fontSize: 17, fontWeight: '900', marginBottom: 4 },
-  bentoCatSub: { fontSize: 11, fontWeight: '600', opacity: 0.4 },
-
-  // Bento List - Temas
-  bentoTopicCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 24,
-    borderWidth: 1.5,
-    padding: 20,
-    marginBottom: 12,
-  },
-  bentoTopicLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  bentoTopicNumber: { fontSize: 28, fontWeight: '900', color: '#E0E3FF', marginRight: 14 },
-  bentoTopicText: { fontSize: 16, fontWeight: '800', flex: 1 },
-  bentoTopicPlay: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#575fcf', alignItems: 'center', justifyContent: 'center' },
+  missionCardWide: { width: '100%', minHeight: 130, flexDirection: 'row', alignItems: 'center', gap: 20 },
+  missionIconBg: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  missionTitle: { fontSize: 17, fontWeight: '900', marginBottom: 4 },
+  missionDesc: { fontSize: 12, fontWeight: '600', opacity: 0.55, marginBottom: 14 },
+  missionStartBadge: { alignSelf: 'flex-start', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
+  missionStartLabel: { color: '#FFF', fontSize: 12, fontWeight: '800' },
 
   backLink: { padding: 16, alignItems: 'center', marginTop: 8 },
   backLinkText: { color: '#95a5a6', fontSize: 15, fontWeight: '700' },
+  backLinkBtn: { padding: 4, marginRight: 12, justifyContent: 'center' },
   
-  progressHeader: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, backgroundColor: '#FFF' },
-  progressText: { fontSize: 14, fontWeight: '800', color: '#575fcf', marginBottom: 8 },
-  progressBar: { height: 8, backgroundColor: '#F0F2F5', borderRadius: 4, overflow: 'hidden' },
+  progressHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 10, backgroundColor: '#FFF' },
+  progressText: { fontSize: 13, fontWeight: '800', color: '#575fcf', marginBottom: 6 },
+  progressBar: { height: 6, backgroundColor: '#F0F2F5', borderRadius: 4, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#05c46b', borderRadius: 4 },
   
   chatContainer: { flex: 1, padding: 16 },
@@ -582,21 +607,7 @@ const styles = StyleSheet.create({
   translateBtnText: { color: '#95a5a6', fontSize: 12, fontWeight: '700', marginLeft: 6 },
   translationText: { fontSize: 14, color: '#485460', marginTop: 8, fontStyle: 'italic', fontWeight: '500' },
   
-  feedbackContainer: { 
-    borderWidth: 1.5, 
-    borderColor: '#efe5ff', 
-    backgroundColor: '#f8f4ff', 
-    borderRadius: 16, 
-    padding: 12, 
-    marginBottom: 8,
-    borderLeftWidth: 5,
-    borderLeftColor: '#9b59b6'
-  },
-  feedbackHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  feedbackHeaderText: { marginLeft: 8, fontSize: 14, fontWeight: '700', color: '#575fcf' },
-  feedbackItem: { marginBottom: 4 },
-  feedbackLabel: { fontSize: 12, fontWeight: '700', color: '#8e44ad' },
-  feedbackValue: { fontSize: 13, color: '#2d3436', fontWeight: '500' },
+  // (feedbackContainer and feedbackHeader styles are defined below in the Tutor Note section)
   
   inputArea: { 
     flexDirection: 'row', 
@@ -644,6 +655,38 @@ const styles = StyleSheet.create({
   primaryBtn: { backgroundColor: '#575fcf', paddingHorizontal: 24, paddingVertical: 16, borderRadius: 20, width: '100%', alignItems: 'center' },
   primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: '900' },
 
+  // Corrections panel and Tutor Note
+  feedbackContainer: { 
+    borderWidth: 1.5,
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2ed573',
+  },
+  feedbackHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  feedbackHeaderText: { marginLeft: 8, fontSize: 13, fontWeight: '800' },
+  correctionItem: { paddingVertical: 8 },
+  correctionRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 },
+  correctionWrong: { 
+    fontSize: 13, fontWeight: '700', color: '#e74c3c', 
+    textDecorationLine: 'line-through', opacity: 0.85 
+  },
+  correctionRight: { fontSize: 13, fontWeight: '800', color: '#2ed573' },
+  correctionExplanation: { fontSize: 12, fontWeight: '500', opacity: 0.75, lineHeight: 18 },
+
+  // Tutor Note (orange teacher-style annotation)
+  tutorNote: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#e17055',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+  },
+  tutorNoteHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  tutorNoteTitle: { fontSize: 12, fontWeight: '800', color: '#e17055', letterSpacing: 0.5 },
+
   // Perfect grammar reward
   perfectBubble: { borderWidth: 2, borderColor: '#2ed573' },
   perfectLabel: { fontSize: 11, fontWeight: '800', color: '#2ed573', marginBottom: 4 },
@@ -670,9 +713,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1.5,
   },
-  hintInlineText: { flex: 1, fontSize: 13, fontWeight: '600', opacity: 0.85 },
+  hintInlineText: { fontSize: 13, fontWeight: '700', lineHeight: 18 },
+  hintInlineSubtext: { fontSize: 11, fontWeight: '500', opacity: 0.6, marginTop: 2 },
   hintInjectBtn: { backgroundColor: '#575fcf', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
-  hintInjectLabel: { color: '#FFF', fontSize: 12, fontWeight: '800' },
+  hintInjectLabel: { color: '#575fcf', fontSize: 12, fontWeight: '900' },
 
   speakerIcon: {
     position: 'absolute',

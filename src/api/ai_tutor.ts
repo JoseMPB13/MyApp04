@@ -6,6 +6,13 @@
 const API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
 const API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
+export interface Correction {
+  original: string;
+  corrected: string;
+  explanation: string;
+}
+
+// FeedbackCapsule kept for backward compatibility with other components
 export interface FeedbackCapsule {
   grammar: string;
   vocabulary: string;
@@ -14,10 +21,14 @@ export interface FeedbackCapsule {
 
 export interface LessonResponse {
   text: string;
-  feedbackType: "success" | "correction" | "neutral";
   translation: string;
-  suggested_reply: string;
-  feedbackCapsule: FeedbackCapsule;
+  suggested_reply_en: string;
+  suggested_reply_es: string;
+  corrections?: Correction[];
+  // Legacy fields — kept so other components don't break during migration
+  feedbackType?: "success" | "correction" | "neutral";
+  suggested_reply?: string;
+  feedbackCapsule?: FeedbackCapsule;
 }
 
 export interface WordPair {
@@ -338,70 +349,69 @@ FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
     const topic = scenarioGoal;
     const wordsConstraint =
       targetWords.length > 0
-        ? `Target vocabulary words for the user to incorporate: [${targetWords.join(", ")}].`
-        : "Use varied and natural vocabulary.";
+        ? `Try to encourage the user to use some of these words naturally: [${targetWords.slice(0, 5).join(", ")}].`
+        : "Use simple, everyday vocabulary appropriate for a beginner.";
+
+    const isLastTurn = turnCount >= 5;
 
     const systemPrompt = `
-      You are an expert English tutor AI inside a Duolingo-style app. Your persona name is Raccoon.
+You are Coach Raccoon, a patient and friendly English tutor inside a language-learning app.
+The student has a BEGINNER level (CEFR A1/A2). They are a native Spanish speaker learning English.
 
-      CRITICAL RULE: The 'text' field MUST be written ENTIRELY in English. The user might provide topics in Spanish, but your persona only speaks English. Only use Spanish for 'translation', 'suggested_reply', and 'feedbackCapsule'.
+CRITICAL RULES — follow ALL of them without exception:
+1. LANGUAGE: The "text" field MUST be 100% in English. Simple sentences only. Maximum 3 sentences.
+2. ONE QUESTION: ${isLastTurn ? 'This is the LAST turn. Congratulate the student warmly and do NOT ask any more questions.' : 'You MUST end your "text" with exactly ONE open question to keep the conversation going.'}
+3. VOCABULARY GOAL: ${wordsConstraint}
+4. SUGGESTED REPLY: "suggested_reply_en" is a short example answer IN ENGLISH to the question you just asked. "suggested_reply_es" is the EXACT Spanish translation of that suggested reply. Both must be short (1 sentence max).
+5. CORRECTIONS: If the student made grammar or vocabulary mistakes in their last message, list each one in the "corrections" array. For each correction: "original" = the exact wrong phrase they used, "corrected" = the correct version, "explanation" = a brief explanation in Spanish. If there are NO errors, return an empty array [].
+6. TRANSLATION: "translation" is the complete Spanish translation of your "text" field.
 
-      CURRENT SCENARIO: "${scenarioGoal}"
+CURRENT SCENARIO: "${scenarioGoal}"
+TURN: ${turnCount} of 5.
 
-      VOCABULARY GOAL:
-      ${wordsConstraint}
-
-      LESSON STATE:
-      We are on turn ${turnCount} of 5.
-      - Turns 1 to 4: Keep the conversation flowing naturally. Ask ONE short follow-up question to continue.
-      - Turn 5: This is your LAST response. Close the conversation naturally and congratulate the user. Do NOT ask more questions.
-
-      FOR EACH RESPONSE YOU MUST:
-      1. Evaluate the user's message (errors or successes) and provide feedback in 'feedbackCapsule' (ALL IN SPANISH).
-      2. Respond as Raccoon in English in the 'text' field.
-      3. Provide a 'suggested_reply': a SHORT example sentence in Spanish that the student could translate and use to answer your question. This helps them overcome writer's block.
-
-      MANDATORY RESPONSE FORMAT (respond ONLY with this exact JSON, no markdown):
-      {
-        "text": "Your response in English here",
-        "feedbackType": "success" | "correction" | "neutral",
-        "translation": "Complete Spanish translation of 'text' here",
-        "suggested_reply": "Una frase corta en español que el usuario podría usar para responder",
-        "feedbackCapsule": {
-          "grammar": "Short grammar analysis in Spanish",
-          "vocabulary": "Short vocabulary analysis in Spanish (mention if they used target words)",
-          "naturalness": "How to sound more natural in English, in Spanish"
-        }
-      }
+MANDATORY JSON FORMAT (respond ONLY with this JSON, no markdown, no extra text):
+{
+  "text": "Your response in English here. End with one question.",
+  "translation": "Traducci\u00f3n completa al espa\u00f1ol de 'text'",
+  "suggested_reply_en": "A short example answer in English to your question",
+  "suggested_reply_es": "La traducci\u00f3n exacta al espa\u00f1ol de suggested_reply_en",
+  "corrections": [
+    {
+      "original": "exact wrong phrase from user",
+      "corrected": "correct version",
+      "explanation": "Breve explicaci\u00f3n en espa\u00f1ol del error"
+    }
+  ]
+}
     `;
 
-    // Convertir historial al formato de OpenAI
+    // Convertir historial al formato OpenAI (filtrar el mensaje de init interno)
     const formattedMessages = [
       { role: "system", content: systemPrompt },
-      ...messages.map((m: any) => ({
-        role: m.sender === "user" ? "user" : "assistant",
-        content: m.text,
-      })),
+      ...messages
+        .filter((m: any) => !m.text?.startsWith('[INSTRUCCI'))
+        .map((m: any) => ({
+          role: m.sender === "user" ? "user" : "assistant",
+          content: m.text,
+        })),
     ];
 
-    console.log("\ud83d\udfe2 [AI_TUTOR] Enviando Payload a Groq:", JSON.stringify({ topic, turnCount }, null, 2));
+    console.log("\ud83e\udde0 [AI_TUTOR] Enviando payload a Groq:", JSON.stringify({ topic, turnCount, messagesCount: formattedMessages.length - 1 }, null, 2));
 
     try {
-      const rawResponseText = await fetchGroq(formattedMessages);
-      console.log("\ud83d\udd35 [AI_TUTOR] Respuesta cruda recibida:", JSON.stringify(rawResponseText));
-      return rawResponseText as LessonResponse;
+      const raw = await fetchGroq(formattedMessages);
+      console.log("\ud83d\udfe3 [AI_TUTOR] Respuesta cruda recibida:", JSON.stringify(raw));
+      // Normalize: ensure corrections is always an array
+      if (!Array.isArray(raw.corrections)) raw.corrections = [];
+      return raw as LessonResponse;
     } catch (error) {
       console.error("\ud83d\udd34 [AI_TUTOR] Error cr\u00edtico en la llamada:", error);
       return {
-        text: "I'm having some trouble connecting, but let's keep trying!",
-        feedbackType: "neutral",
-        translation: "Tengo problemas de conexi\u00f3n, \u00a1pero sigamos intent\u00e1ndolo!",
-        suggested_reply: "No te preocupes, podemos seguir intentando.",
-        feedbackCapsule: {
-          grammar: "No disponible",
-          vocabulary: "No disponible",
-          naturalness: "No disponible",
-        },
+        text: "Sorry, I had a small connection issue! Let's keep going. What do you think about this topic?",
+        translation: "\u00a1Lo siento, tuve un peque\u00f1o problema de conexi\u00f3n! Sigamos. \u00bfQu\u00e9 piensas sobre este tema?",
+        suggested_reply_en: "I think it is very interesting!",
+        suggested_reply_es: "\u00a1Creo que es muy interesante!",
+        corrections: [],
       };
     }
   },
