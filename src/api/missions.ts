@@ -5,6 +5,7 @@ export interface StreakData {
   max_streak: number;
   last_completion_date: string | null;
   historical_streak?: number;
+  completed_dates?: string[]; // Array de fechas en formato 'YYYY-MM-DD'
 }
 
 export const MissionsService = {
@@ -90,7 +91,7 @@ export const MissionsService = {
   async getStreak(userId: string): Promise<StreakData | null> {
     const { data, error } = await supabase
       .from('user_streaks')
-      .select('current_streak, max_streak, last_completion_date')
+      .select('current_streak, max_streak, last_completion_date, completed_dates')
       .eq('user_id', userId)
       .maybeSingle();
 

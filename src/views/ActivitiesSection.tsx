@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { VaultService } from '../api/vault';
 import { MissionsService } from '../api/missions';
 import { AITutorService } from '../api/ai_tutor';
@@ -47,7 +49,6 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
       const progress = await MissionsService.getUserProgress(userId);
       setCurrentExp(progress.total_exp);
       setCurrentLevel(progress.current_level);
-      console.log("🚀 [ACTIVITIES] Iniciando carga de palabras. Exp:", progress.total_exp, "Nivel:", progress.current_level);
       
       const currentRecent = overrideRecent || recentWords;
       const vaultWords = await VaultService.getWords(userId);
@@ -60,7 +61,6 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
         ...word,
         inVault: vaultEn.includes(word.translation.toLowerCase())
       }));
-      console.log("📦 [ACTIVITIES] Palabras listas para jugar:", mappedGenerated);
       setLessonWords(mappedGenerated);
     } catch (error) {
       console.error("Error loading level words:", error);
@@ -77,99 +77,109 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
     setCurrentMission(type);
   };
 
+  const handleExitGame = () => {
+    setCurrentMission(null);
+    onMissionStateChange(false);
+  };
+
+  // Modern Gesture API for swipe-to-exit
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-20, 20])
+    .onEnd((event) => {
+      // If swipe right distance > 80 pixels
+      if (event.translationX > 80) {
+        runOnJS(handleExitGame)();
+      }
+    });
+
   if (currentMission === 'word-matcher') {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <TouchableOpacity onPress={() => {
-          setCurrentMission(null);
-          onMissionStateChange(false);
-        }} style={styles.backButton}>
-           <Ionicons name="arrow-back" size={24} color="#575fcf" />
-           <Text style={styles.backText}>Volver</Text>
-        </TouchableOpacity>
-        
-        {isGenerating ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.accent} />
-            <Text style={[styles.loadingText, { color: colors.text }]}>Generando Nivel {currentLevel}...</Text>
-          </View>
-        ) : (
-          <WordMatcher 
-            words={lessonWords} 
-            userId={userId}
-            level={currentLevel}
-            exp={currentExp}
-            onNextLevel={async (matched, maxCombo) => {
-              const expGain = 25 + (maxCombo * 5);
-              const { exp, level } = await MissionsService.addUserExp(userId, expGain);
-              setCurrentExp(exp);
-              setCurrentLevel(level);
-              const newRecent = [...recentWords, ...matched.map(w => w.translation.toLowerCase())].slice(-25);
-              setRecentWords(newRecent);
-              loadLessonWords(newRecent);
-            }}
-            onExit={async (matched, maxCombo) => {
-              const expGain = 25 + (maxCombo * 5);
-              const { exp, level } = await MissionsService.addUserExp(userId, expGain);
-              setCurrentExp(exp);
-              setCurrentLevel(level);
-              setCurrentMission(null);
-              onMissionStateChange(false);
-              onComplete('word-matcher', { matched, expGain });
-            }} 
-          />
-        )}
-      </View>
+      <GestureDetector gesture={panGesture}>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <TouchableOpacity onPress={handleExitGame} style={styles.backButton}>
+             <Ionicons name="arrow-back" size={24} color="#575fcf" />
+             <Text style={styles.backText}>Volver</Text>
+          </TouchableOpacity>
+          
+          {isGenerating ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.accent} />
+              <Text style={[styles.loadingText, { color: colors.text }]}>Generando Nivel {currentLevel}...</Text>
+            </View>
+          ) : (
+            <WordMatcher 
+              words={lessonWords} 
+              userId={userId}
+              level={currentLevel}
+              exp={currentExp}
+              onNextLevel={async (matched, maxCombo) => {
+                const expGain = 25 + (maxCombo * 5);
+                const { exp, level } = await MissionsService.addUserExp(userId, expGain);
+                setCurrentExp(exp);
+                setCurrentLevel(level);
+                const newRecent = [...recentWords, ...matched.map(w => w.translation.toLowerCase())].slice(-25);
+                setRecentWords(newRecent);
+                loadLessonWords(newRecent);
+              }}
+              onExit={async (matched, maxCombo) => {
+                const expGain = 25 + (maxCombo * 5);
+                const { exp, level } = await MissionsService.addUserExp(userId, expGain);
+                setCurrentExp(exp);
+                setCurrentLevel(level);
+                handleExitGame();
+                onComplete('word-matcher', { matched, expGain });
+              }} 
+            />
+          )}
+        </View>
+      </GestureDetector>
     );
   }
 
   if (currentMission === 'ai-scenario') {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <TouchableOpacity onPress={() => {
-          setCurrentMission(null);
-          onMissionStateChange(false);
-        }} style={styles.backButton}>
-           <Ionicons name="arrow-back" size={24} color="#575fcf" />
-           <Text style={styles.backText}>Volver</Text>
-        </TouchableOpacity>
-        <AIScenario 
-          userId={userId} 
-          onComplete={() => onComplete('ai-scenario')} 
-        />
-      </View>
+      <GestureDetector gesture={panGesture}>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <TouchableOpacity onPress={handleExitGame} style={styles.backButton}>
+             <Ionicons name="arrow-back" size={24} color="#575fcf" />
+             <Text style={styles.backText}>Volver</Text>
+          </TouchableOpacity>
+          <AIScenario 
+            userId={userId} 
+            onComplete={() => onComplete('ai-scenario')} 
+          />
+        </View>
+      </GestureDetector>
     );
   }
 
   if (currentMission === 'crossword') {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <TouchableOpacity onPress={() => {
-          setCurrentMission(null);
-          onMissionStateChange(false);
-        }} style={styles.backButton}>
-           <Ionicons name="arrow-back" size={24} color="#575fcf" />
-           <Text style={styles.backText}>Volver</Text>
-        </TouchableOpacity>
-        <CrosswordGame
-          userId={userId}
-          level={currentLevel}
-          exp={currentExp}
-          onNextLevel={async (expGain: number) => {
-            const { exp, level } = await MissionsService.addUserExp(userId, expGain);
-            setCurrentExp(exp);
-            setCurrentLevel(level);
-          }}
-          onExit={async (expGain: number) => {
-            const { exp, level } = await MissionsService.addUserExp(userId, expGain);
-            setCurrentExp(exp);
-            setCurrentLevel(level);
-            setCurrentMission(null);
-            onMissionStateChange(false);
-            onComplete('crossword', { expGain });
-          }}
-        />
-      </View>
+      <GestureDetector gesture={panGesture}>
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <TouchableOpacity onPress={handleExitGame} style={styles.backButton}>
+             <Ionicons name="arrow-back" size={24} color="#575fcf" />
+             <Text style={styles.backText}>Volver</Text>
+          </TouchableOpacity>
+          <CrosswordGame
+            userId={userId}
+            level={currentLevel}
+            exp={currentExp}
+            onNextLevel={async (expGain: number) => {
+              const { exp, level } = await MissionsService.addUserExp(userId, expGain);
+              setCurrentExp(exp);
+              setCurrentLevel(level);
+            }}
+            onExit={async (expGain: number) => {
+              const { exp, level } = await MissionsService.addUserExp(userId, expGain);
+              setCurrentExp(exp);
+              setCurrentLevel(level);
+              handleExitGame();
+              onComplete('crossword', { expGain });
+            }}
+          />
+        </View>
+      </GestureDetector>
     );
   }
 

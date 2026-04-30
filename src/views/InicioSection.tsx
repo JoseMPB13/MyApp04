@@ -7,7 +7,8 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import { StreakData } from '../api/missions';
+import Animated, { LinearTransition } from 'react-native-reanimated';
+import { MissionsService, StreakData } from '../api/missions';
 import { AITutorService } from '../api/ai_tutor';
 import { useAppTheme } from '../context/ThemeContext';
 import { useUser } from '../context/UserContext';
@@ -26,58 +27,74 @@ export default function InicioSection({ streak, user }: { streak: StreakData | n
   const { username } = useUser();
   const [miniLesson, setMiniLesson] = useState<{title: string, explanation: string, exampleEn: string, exampleEs: string} | null>(null);
   const [loadingLesson, setLoadingLesson] = useState(true);
+  
+  // Real user progress state
+  const [progress, setProgress] = useState<{ total_exp: number, current_level: number }>({ total_exp: 0, current_level: 1 });
 
   useEffect(() => {
     AITutorService.getMiniLesson().then(lesson => {
       setMiniLesson(lesson);
       setLoadingLesson(false);
     });
-  }, []);
+
+    // Fetch real progress from Supabase
+    if (user?.id) {
+      MissionsService.getUserProgress(user.id).then(data => {
+        setProgress(data);
+      });
+    }
+  }, [user?.id]);
 
   const displayName = username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'Amigo';
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sectionPadding}>
-      <View style={styles.headerRow}>
-        <View style={{ flex: 1, marginRight: 16 }}>
-          <Text style={[styles.greetingText, { color: colors.text }]}>
-            {getGreeting()}, <Text style={{ color: colors.accent }}>{displayName}</Text>! 👋
-          </Text>
+      {/* Fixed layout transition to avoid infinite bounce issues */}
+      <Animated.View layout={LinearTransition.duration(250)}>
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1, marginRight: 16 }}>
+            <Text style={[styles.greetingText, { color: colors.text }]}>
+              {getGreeting()}, <Text style={{ color: colors.accent }}>{displayName}</Text>! 👋
+            </Text>
+          </View>
+          <ProgressCircle 
+            percentage={progress.total_exp % 100} 
+            size={64} 
+            color={colors.accent} 
+            level={progress.current_level} 
+          />
         </View>
-        <ProgressCircle 
-          percentage={75} 
-          size={64} 
-          color={colors.accent} 
-          level="3" 
-        />
-      </View>
-      
-      <StreakPanel streak={streak} />
+        
+        <StreakPanel streak={streak} />
 
-      <View style={styles.coachContext}>
-        <View style={[styles.raccoonAvatar, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.accent }]}>
-          <Text style={{ fontSize: 32 }}>🦝</Text>
-        </View>
-        <View style={[styles.chatBubble, styles.cardShadow, { backgroundColor: colors.card }]}>
-          <Text style={[styles.coachName, { color: colors.accent }]}>Coach Raccoon</Text>
-          {loadingLesson ? (
-            <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
-          ) : (
-            <>
-              <Text style={[styles.lessonTitle, { color: colors.accent }]}>
-                {miniLesson?.title}
-              </Text>
-              <Text style={[styles.coachMsg, { color: colors.text }]}>
-                {miniLesson?.explanation}
-              </Text>
-              <View style={[styles.exampleBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                <Text style={[styles.exampleEn, { color: colors.text }]}>&quot;{miniLesson?.exampleEn}&quot;</Text>
-                <Text style={[styles.exampleEs, { color: colors.text }]}>{miniLesson?.exampleEs}</Text>
-              </View>
-            </>
-          )}
-        </View>
-      </View>
+        <Animated.View 
+          style={styles.coachContext} 
+          layout={LinearTransition.duration(250)}
+        >
+          <View style={[styles.raccoonAvatar, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.accent }]}>
+            <Text style={{ fontSize: 32 }}>🦝</Text>
+          </View>
+          <View style={[styles.chatBubble, styles.cardShadow, { backgroundColor: colors.card }]}>
+            <Text style={[styles.coachName, { color: colors.accent }]}>Coach Raccoon</Text>
+            {loadingLesson ? (
+              <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
+            ) : (
+              <>
+                <Text style={[styles.lessonTitle, { color: colors.accent }]}>
+                  {miniLesson?.title}
+                </Text>
+                <Text style={[styles.coachMsg, { color: colors.text }]}>
+                  {miniLesson?.explanation}
+                </Text>
+                <View style={[styles.exampleBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <Text style={[styles.exampleEn, { color: colors.text }]}>&quot;{miniLesson?.exampleEn}&quot;</Text>
+                  <Text style={[styles.exampleEs, { color: colors.text }]}>{miniLesson?.exampleEs}</Text>
+                </View>
+              </>
+            )}
+          </View>
+        </Animated.View>
+      </Animated.View>
     </ScrollView>
   );
 }

@@ -1,12 +1,17 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
-  Animated,
   Platform,
 } from 'react-native';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming 
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { StreakData } from '../../api/missions';
@@ -18,38 +23,55 @@ const MONTHS_NAMES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ];
 
-const isCompleted = (date: Date, streak: StreakData | null) => {
-  if (!streak || !streak.last_completion_date) return false;
-  
-  const activeStreak = streak.historical_streak ?? streak.current_streak;
-  if (activeStreak === 0) return false;
+/**
+ * Returns a 'YYYY-MM-DD' string based on the local time of the device.
+ */
+const getLocalDateString = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
-  const [year, month, day] = streak.last_completion_date.split('-').map(Number);
-  const lastDate = new Date(year, month - 1, day);
-  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  
-  if (target > lastDate) return false;
-  
-  const diffTime = lastDate.getTime() - target.getTime();
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-  
-  return diffDays >= 0 && diffDays < activeStreak;
+/**
+ * Checks if a specific date is marked as completed in the streak data.
+ */
+const isCompleted = (date: Date, streak: StreakData | null) => {
+  if (!streak || !streak.completed_dates) return false;
+  const targetStr = getLocalDateString(date);
+  return streak.completed_dates.includes(targetStr);
 };
 
 export const StreakPanel = ({ streak }: { streak: StreakData | null }) => {
   const { colors } = useAppTheme();
   const [isExpanded, setIsExpanded] = useState(false);
   const [viewDate] = useState(new Date());
-  const expandAnim = useRef(new Animated.Value(0)).current;
+  
+  // Reanimated shared values
+  const expandValue = useSharedValue(0);
 
   const toggleExpand = () => {
-    Animated.spring(expandAnim, {
-      toValue: isExpanded ? 0 : 1,
-      useNativeDriver: false,
-      friction: 8,
-    }).start();
-    setIsExpanded(!isExpanded);
+    const nextState = !isExpanded;
+    setIsExpanded(nextState);
+    
+    // Premium haptic feedback
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+
+    // Fixed duration to avoid infinite bounce issues
+    expandValue.value = withTiming(nextState ? 1 : 0, {
+      duration: 250,
+    });
   };
+
+  const expandedStyle = useAnimatedStyle(() => {
+    return {
+      height: expandValue.value * 360,
+      opacity: expandValue.value,
+      marginTop: expandValue.value * 12,
+    };
+  });
 
   const getStreakMessage = (days: number) => {
     if (days === 0) return '¡Hora de empezar!';
@@ -71,7 +93,7 @@ export const StreakPanel = ({ streak }: { streak: StreakData | null }) => {
     const monthDays = Array.from({ length: daysInMonth }).map((_, i) => {
       const d = new Date(year, month, i + 1);
       const isDone = isCompleted(d, streak);
-      const isToday = new Date().toDateString() === d.toDateString();
+      const isToday = getLocalDateString(new Date()) === getLocalDateString(d);
       
       return (
         <View key={i} style={[
@@ -80,7 +102,13 @@ export const StreakPanel = ({ streak }: { streak: StreakData | null }) => {
           isDone ? styles.calendarDayDone : null,
           isToday && !isDone ? { borderWidth: 2, borderColor: colors.accent } : null
         ]}>
-          <Text style={[styles.calendarDayText, { color: colors.text }, isDone ? { color: '#FFF' } : null]}>{i + 1}</Text>
+          <Text style={[
+            styles.calendarDayText, 
+            { color: colors.text }, 
+            isDone ? { color: '#FFF' } : null
+          ]}>
+            {i + 1}
+          </Text>
         </View>
       );
     });
@@ -136,7 +164,11 @@ export const StreakPanel = ({ streak }: { streak: StreakData | null }) => {
         </LinearGradient>
       </TouchableOpacity>
 
-      <Animated.View style={[styles.expandedContainer, { backgroundColor: colors.card, height: expandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 360] }), opacity: expandAnim }]}>
+      <Animated.View style={[
+        styles.expandedContainer, 
+        { backgroundColor: colors.card },
+        expandedStyle
+      ]}>
         <View style={styles.calendarFull}>
            <Text style={[styles.monthTitle, { color: colors.text }]}>{MONTHS_NAMES[viewDate.getMonth()]} {viewDate.getFullYear()}</Text>
            <View style={styles.calendarGrid}>
@@ -171,12 +203,11 @@ const styles = StyleSheet.create({
   emptyDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.3)' },
   expandHint: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 20 },
   tapToExpand: { color: '#FFF', fontSize: 12, fontWeight: '800', opacity: 0.9 },
-  expandedContainer: { backgroundColor: '#FFF', borderRadius: 28, marginTop: 12, overflow: 'hidden' },
+  expandedContainer: { borderRadius: 28, overflow: 'hidden' },
   calendarFull: { padding: 20 },
-  monthTitle: { fontSize: 18, fontWeight: '900', color: '#2f3542', textAlign: 'center' },
+  monthTitle: { fontSize: 18, fontWeight: '900', textAlign: 'center' },
   calendarGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 16, justifyContent: 'flex-start' },
-  calendarDay: { width: '13%', aspectRatio: 1, margin: '0.6%', alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#f1f2f6' },
+  calendarDay: { width: '13%', aspectRatio: 1, margin: '0.6%', alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
   calendarDayDone: { backgroundColor: '#05c46b' },
-  calendarDayToday: { borderWidth: 2, borderColor: '#575fcf' },
-  calendarDayText: { fontSize: 13, fontWeight: '700', color: '#2f3542' },
+  calendarDayText: { fontSize: 13, fontWeight: '700' },
 });
