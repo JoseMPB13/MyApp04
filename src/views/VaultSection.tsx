@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -16,6 +16,7 @@ import { VaultService, VaultWord } from '../api/vault';
 import { AITutorService } from '../api/ai_tutor';
 import { useTranslation } from '../hooks/useTranslation';
 import { useAppTheme } from '../context/ThemeContext';
+import VaultItem from '../components/VaultItem';
 
 interface VaultSectionProps {
   userId: string;
@@ -33,14 +34,20 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
   const [saving, setSaving] = useState(false);
   
   // AI Translation Hook
-  const { translate, loading: translating, error: translationError } = useTranslation();
+  const { translate, loading: translating } = useTranslation();
   const [activeInput, setActiveInput] = useState<'en' | 'es' | null>(null);
 
-
+  const loadVault = useCallback(async () => {
+    if (!userId) return;
+    setLoading(true);
+    const data = await VaultService.getWords(userId);
+    setWords(data);
+    setLoading(false);
+  }, [userId]);
 
   useEffect(() => {
     if (userId) loadVault();
-  }, [userId]);
+  }, [userId, loadVault]);
 
   // Auto-translation logic for English -> Spanish
   useEffect(() => {
@@ -56,7 +63,7 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [wordEn, activeInput]);
+  }, [wordEn, activeInput, translate, wordEs]);
 
   // Auto-translation logic for Spanish -> English
   useEffect(() => {
@@ -72,15 +79,7 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
     }, 1200);
 
     return () => clearTimeout(timer);
-  }, [wordEs, activeInput]);
-
-  const loadVault = async () => {
-    if (!userId) return;
-    setLoading(true);
-    const data = await VaultService.getWords(userId);
-    setWords(data);
-    setLoading(false);
-  };
+  }, [wordEs, activeInput, translate, wordEn]);
 
   const handleAddWord = async () => {
     if (!userId || !wordEn || !wordEs) {
@@ -104,7 +103,6 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
       status: 'learning'
     };
 
-    console.log('VaultSection: Intentando guardar palabra...', newWord);
     const result = await VaultService.addVaultItem(newWord);
     setSaving(false);
 
@@ -115,18 +113,23 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
       setShowForm(false);
       loadVault();
     } else {
-      console.error('VaultSection: Error al guardar:', result.error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert(
         'Error al guardar',
-        `No se pudo guardar la palabra: ${result.error?.message || 'Error desconocido'}. Revisa la consola para más detalles técnicos.`
+        `No se pudo guardar la palabra: ${result.error?.message || 'Error desconocido'}.`
       );
     }
   };
 
   const handleDelete = async (id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const result = await VaultService.deleteWord(id);
+    if (result.success) {
+      loadVault();
+    }
+  };
+
+  const handleMarkMastered = async (id: string) => {
+    const result = await VaultService.updateWordStatus(id, 'mastered');
     if (result.success) {
       loadVault();
     }
@@ -176,7 +179,6 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
           <View style={[styles.formContainer, styles.cardShadow, { backgroundColor: colors.card }]}>
             <Text style={[styles.formTitle, { color: colors.text }]}>Añadir al Baúl</Text>
             
-
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: colors.text }]}>Inglés</Text>
               <View style={styles.inputWrapper}>
@@ -214,8 +216,6 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
                 )}
               </View>
             </View>
-
-            {/* Removed manual category picker */}
 
             <TouchableOpacity 
               style={[
@@ -263,27 +263,12 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
                 <View key={cat} style={styles.categorySection}>
                   <Text style={styles.categoryHeader}>{cat}</Text>
                   {catWords.map((w) => (
-                    <View 
+                    <VaultItem 
                       key={w.id} 
-                      style={[styles.wordCard, styles.cardShadow3D, { backgroundColor: colors.card, borderColor: colors.border }]}
-                    >
-                      <View style={styles.wordInfo}>
-                        <Text style={[styles.wordEs, { color: colors.text }]}>{w.word_es}</Text>
-                        <View style={styles.wordEnRow}>
-                           <Text style={styles.wordEn}>{w.word_en}</Text>
-                        </View>
-                        <View style={styles.categoryTag}>
-                           <Text style={styles.categoryTagText}>{w.category || 'General'}</Text>
-                        </View>
-                      </View>
-                      
-                      <TouchableOpacity 
-                        onPress={() => w.id && handleDelete(w.id)}
-                        style={styles.deleteBtn}
-                      >
-                        <Ionicons name="trash-outline" size={20} color="#FF4757" />
-                      </TouchableOpacity>
-                    </View>
+                      word={w} 
+                      onDelete={handleDelete} 
+                      onMarkMastered={handleMarkMastered} 
+                    />
                   ))}
                 </View>
               ))
@@ -298,37 +283,32 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
 export default VaultSection;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F0F2F5' },
+  container: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 150 },
-  sectionTitle: { fontSize: 28, fontWeight: '900', color: '#1e272e', marginBottom: 6 },
+  sectionTitle: { fontSize: 28, fontWeight: '900', marginBottom: 6 },
   sectionSubtitle: { fontSize: 16, color: '#7f8c8d', marginBottom: 24, fontWeight: '500' },
   
   // Bento Grid
   bentoGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 24 },
   bentoCard: { borderRadius: 24, padding: 20, marginBottom: 14 },
   mainActionCard: { width: '64%', backgroundColor: '#575fcf', height: 140, justifyContent: 'center' },
-  statsCard: { width: '32%', backgroundColor: '#FFF', height: 140, alignItems: 'center', justifyContent: 'center' },
-  masteredCard: { width: '100%', backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', padding: 16 },
+  statsCard: { width: '32%', height: 140, alignItems: 'center', justifyContent: 'center' },
+  masteredCard: { width: '100%', flexDirection: 'row', alignItems: 'center', padding: 16 },
   
   bentoIconContainer: { marginBottom: 12 },
   mainActionTitle: { color: '#FFF', fontSize: 18, fontWeight: '900' },
   statsCount: { fontSize: 32, fontWeight: '900', color: '#575fcf' },
-  statsLabel: { fontSize: 12, color: '#7f8c8d', fontWeight: '700', marginTop: 4 },
-  masteredLabel: { marginLeft: 12, fontSize: 13, color: '#2d3436', fontWeight: '700' },
+  statsLabel: { fontSize: 12, fontWeight: '700', marginTop: 4 },
+  masteredLabel: { marginLeft: 12, fontSize: 13, fontWeight: '700' },
 
   // Form
-  formContainer: { backgroundColor: '#FFF', borderRadius: 24, padding: 24, marginBottom: 24 },
-  formTitle: { fontSize: 20, fontWeight: '900', color: '#2d3436', marginBottom: 20 },
+  formContainer: { borderRadius: 24, padding: 24, marginBottom: 24 },
+  formTitle: { fontSize: 20, fontWeight: '900', marginBottom: 20 },
   inputGroup: { marginBottom: 16 },
-  inputLabel: { fontSize: 14, fontWeight: '800', color: '#485460', marginBottom: 8 },
+  inputLabel: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
   inputWrapper: { position: 'relative', justifyContent: 'center' },
-  input: { backgroundColor: '#F1F2F6', borderRadius: 12, padding: 14, fontSize: 16, color: '#2d3436', fontWeight: '600', paddingRight: 40 },
+  input: { borderRadius: 12, padding: 14, fontSize: 16, fontWeight: '600', paddingRight: 40 },
   inputLoader: { position: 'absolute', right: 12 },
-  categoryPicker: { flexDirection: 'row', flexWrap: 'wrap' },
-  categoryChip: { backgroundColor: '#F1F2F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginRight: 8, marginBottom: 8, borderWidth: 1, borderColor: 'transparent' },
-  categoryChipActive: { backgroundColor: '#EEF1FF', borderColor: '#575fcf' },
-  categoryText: { fontSize: 12, fontWeight: '800', color: '#7f8c8d' },
-  categoryTextActive: { color: '#575fcf' },
   
   saveButton: { backgroundColor: '#05c46b', padding: 16, borderRadius: 16, alignItems: 'center', marginTop: 8, borderBottomWidth: 4, borderColor: '#04a75b' },
   saveButtonDisabled: { backgroundColor: '#a4b0be', borderColor: '#747d8c', opacity: 0.7 },
@@ -336,18 +316,10 @@ const styles = StyleSheet.create({
 
   // List & Grouping
   listHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  listTitle: { fontSize: 18, fontWeight: '900', color: '#2d3436' },
+  listTitle: { fontSize: 18, fontWeight: '900' },
   wordList: { marginTop: 4 },
   categorySection: { marginBottom: 20 },
   categoryHeader: { fontSize: 18, fontWeight: '900', color: '#575fcf', marginBottom: 12, marginLeft: 4 },
-  wordCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 18, marginBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderColor: '#F1F2F6', borderWidth: 1, borderBottomWidth: 5 },
-  wordInfo: { flex: 1 },
-  wordEs: { fontSize: 18, fontWeight: '900', color: '#2d3436' },
-  wordEnRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
-  wordEn: { fontSize: 15, color: '#575fcf', fontWeight: '800' },
-  categoryTag: { alignSelf: 'flex-start', backgroundColor: '#F1F2F6', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginTop: 10 },
-  categoryTagText: { fontSize: 10, fontWeight: '900', color: '#95a5a6' },
-  deleteBtn: { padding: 10 },
 
   // Mixins/Shadows
   cardShadow: {
@@ -366,5 +338,4 @@ const styles = StyleSheet.create({
   },
   emptyContainer: { alignItems: 'center', marginTop: 60 },
   emptyText: { color: '#95a5a6', marginTop: 16, textAlign: 'center', width: 220, fontSize: 14, fontWeight: '600' },
-
 });

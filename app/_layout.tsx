@@ -3,6 +3,7 @@ import 'react-native-url-polyfill/auto';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { ThemeProvider, useAppTheme } from '../src/context/ThemeContext';
 import { UserProvider } from '../src/context/UserContext';
 
@@ -22,10 +23,12 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <ThemeProvider>
-      <UserProvider>
-        <RootLayoutNav />
-      </UserProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <UserProvider>
+          <RootLayoutNav />
+        </UserProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
