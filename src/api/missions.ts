@@ -4,7 +4,6 @@ export interface StreakData {
   current_streak: number;
   max_streak: number;
   last_completion_date: string | null;
-  historical_streak?: number;
   completed_dates?: string[]; // Array de fechas en formato 'YYYY-MM-DD'
 }
 
@@ -30,7 +29,10 @@ export const MissionsService = {
 
       if (streakFetchError && streakFetchError.code !== 'PGRST116') throw streakFetchError;
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date().toLocaleDateString('en-CA');
+      const currentDates = streak?.completed_dates || [];
+      const updatedDates = currentDates.includes(today) ? currentDates : [...currentDates, today];
+
       let newStreak = 1;
       let newMax = 1;
 
@@ -38,7 +40,7 @@ export const MissionsService = {
         const lastDate = streak.last_completion_date;
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        const yesterdayStr = yesterday.toLocaleDateString('en-CA');
 
         if (lastDate === today) {
           // Ya completó una hoy, la racha se mantiene igual
@@ -60,7 +62,7 @@ export const MissionsService = {
             current_streak: newStreak, 
             max_streak: newMax, 
             last_completion_date: today,
-            updated_at: new Date().toISOString()
+            completed_dates: updatedDates
           })
           .eq('user_id', userId);
         
@@ -73,7 +75,8 @@ export const MissionsService = {
             user_id: userId, 
             current_streak: 1, 
             max_streak: 1, 
-            last_completion_date: today 
+            last_completion_date: today,
+            completed_dates: [today]
           }]);
         if (insertError) throw insertError;
       }
@@ -97,7 +100,7 @@ export const MissionsService = {
 
     if (error || !data) return null;
 
-    const result = { ...data, historical_streak: data.current_streak };
+    const result: StreakData = { ...data };
 
     if (data.last_completion_date) {
       const yesterdayDate = new Date();
@@ -117,33 +120,41 @@ export const MissionsService = {
    * Obtiene el progreso del usuario desde Supabase.
    * Si no existe, lo inicializa.
    */
-  async getUserProgress(userId: string): Promise<{ total_exp: number; current_level: number }> {
+  async getUserProgress(userId: string): Promise<{ total_exp: number; current_level: number; lifetime_xp: number }> {
     try {
       const { data, error } = await supabase
         .from('user_progress')
-        .select('total_exp, current_level')
+        .select('total_exp, current_level, lifetime_xp')
         .eq('user_id', userId)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;
 
       if (data) {
-        return { total_exp: data.total_exp, current_level: data.current_level };
+        return { 
+          total_exp: data.total_exp, 
+          current_level: data.current_level,
+          lifetime_xp: data.lifetime_xp || 0
+        };
       }
 
       // No existe, inicializar
       const { data: insertData, error: insertError } = await supabase
         .from('user_progress')
-        .insert([{ user_id: userId, total_exp: 0, current_level: 1 }])
-        .select('total_exp, current_level')
+        .insert([{ user_id: userId, total_exp: 0, current_level: 1, lifetime_xp: 0 }])
+        .select('total_exp, current_level, lifetime_xp')
         .single();
 
       if (insertError) throw insertError;
 
-      return { total_exp: insertData.total_exp, current_level: insertData.current_level };
+      return { 
+        total_exp: insertData.total_exp, 
+        current_level: insertData.current_level,
+        lifetime_xp: insertData.lifetime_xp || 0
+      };
     } catch (error) {
       console.error('Error in getUserProgress:', error);
-      return { total_exp: 0, current_level: 1 };
+        return { total_exp: 0, current_level: 1, lifetime_xp: 0 };
     }
   },
 
@@ -154,6 +165,7 @@ export const MissionsService = {
     try {
       const progress = await MissionsService.getUserProgress(userId);
       const newExp = progress.total_exp + amount;
+      const newLifetimeXp = (progress.lifetime_xp || 0) + amount;
       const newLevel = Math.floor(newExp / 100) + 1;
 
       const { error } = await supabase
@@ -161,7 +173,7 @@ export const MissionsService = {
         .update({ 
           total_exp: newExp, 
           current_level: newLevel,
-          updated_at: new Date().toISOString()
+          lifetime_xp: newLifetimeXp
         })
         .eq('user_id', userId);
 

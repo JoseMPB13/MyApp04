@@ -8,6 +8,7 @@ export interface VaultWord {
   category?: string;
   status?: 'learning' | 'mastered';
   mastery_percent?: number;
+  difficulty_score?: number;
   created_at?: string;
 }
 
@@ -45,7 +46,9 @@ export const VaultService = {
       word_en: word.word_en,
       word_es: word.word_es,
       category: word.category || 'General',
-      status: word.status || 'learning'
+      status: word.status || 'learning',
+      mastery_percent: word.mastery_percent ?? 0,
+      difficulty_score: word.difficulty_score ?? 1.0
     };
 
     console.log('VaultService.addVaultItem: Intentando guardar...', payload);
@@ -107,34 +110,77 @@ export const VaultService = {
    * Si no existe, se crea con 20%.
    */
   async syncMatchedWords(userId: string, words: { word: string, translation: string }[]) {
-    for (const w of words) {
-      // Intentamos buscar si ya existe
-      const { data: existing } = await supabase
-        .from('user_vault')
-        .select('id, mastery_percent')
-        .eq('user_id', userId)
-        .eq('word_en', w.translation)
-        .maybeSingle();
+    try {
+      // Filtrar duplicados locales para optimizar peticiones
+      const uniqueWords = words.filter((w, index, self) =>
+        index === self.findIndex((t) => t.translation === w.translation)
+      );
 
-      if (existing) {
-        // Si ya existe, nos aseguramos de que tenga al menos 20%
-        if ((existing.mastery_percent || 0) < 20) {
-          await supabase
-            .from('user_vault')
-            .update({ mastery_percent: 20 })
-            .eq('id', existing.id);
+      const tasks = uniqueWords.map(async (w) => {
+        const { data: existing, error: fetchError } = await supabase
+          .from('user_vault')
+          .select('id, mastery_percent')
+          .eq('user_id', userId)
+          .eq('word_en', w.translation)
+          .maybeSingle();
+
+        if (fetchError) throw fetchError;
+
+        if (existing) {
+          // Si ya existe, actualizamos a 20% si es menor, sin tocar fechas (lo hace el Trigger)
+          if ((existing.mastery_percent || 0) < 20) {
+            const { error: updateError } = await supabase
+              .from('user_vault')
+              .update({ mastery_percent: 20 })
+              .eq('id', existing.id);
+            
+            if (updateError) throw updateError;
+          }
+        } else {
+          // Si no existe, creamos el registro con valores base
+          const { success, error: insertError } = await this.addVaultItem({
+            user_id: userId,
+            word_es: w.word,
+            word_en: w.translation,
+            status: 'learning',
+            mastery_percent: 20,
+            difficulty_score: 1.0
+          });
+          
+          if (!success) throw insertError;
         }
-      } else {
-        // Si no existe, se agrega nueva
-        await this.addVaultItem({
-          user_id: userId,
-          word_es: w.word,
-          word_en: w.translation,
-          status: 'learning',
-          mastery_percent: 20
-        });
-      }
+      });
+
+      await Promise.all(tasks);
+      return { success: true };
+    } catch (error) {
+      console.error('VaultService.syncMatchedWords ERROR:', error);
+      return { success: false, error };
     }
-    return { success: true };
+  },
+
+  /**
+   * Obtiene vocabulario inicial para nuevos usuarios desde la tabla 'vocabulary'.
+   */
+  async getStarterVocabulary() {
+    try {
+      const { data, error } = await supabase
+        .from('vocabulary')
+        .select('theme, word_en, word_es, difficulty')
+        .eq('is_active', true)
+        .limit(30); // Traemos un pool y barajamos en memoria
+      
+      if (error) throw error;
+      
+      if (!data || data.length === 0) return [];
+
+      // Barajar y tomar 8 palabras aleatorias
+      return data
+        .sort(() => Math.random() - 0.5)
+        .slice(0, 8);
+    } catch (error) {
+      console.error('VaultService.getStarterVocabulary ERROR:', error);
+      return [];
+    }
   }
 };

@@ -162,10 +162,17 @@ CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO public.profiles (id, email, username)
-  VALUES (new.id, new.email, split_part(new.email, '@', 1));
+  VALUES (
+    new.id, 
+    new.email, 
+    COALESCE(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1))
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    username = COALESCE(EXCLUDED.username, profiles.username);
   
-  INSERT INTO public.user_progress (user_id) VALUES (new.id);
-  INSERT INTO public.user_streaks (user_id) VALUES (new.id);
+  INSERT INTO public.user_progress (user_id) VALUES (new.id) ON CONFLICT (user_id) DO NOTHING;
+  INSERT INTO public.user_streaks (user_id) VALUES (new.id) ON CONFLICT (user_id) DO NOTHING;
   
   RETURN NEW;
 END;

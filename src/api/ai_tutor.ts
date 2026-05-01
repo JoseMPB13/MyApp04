@@ -1,3 +1,5 @@
+import { supabase } from "./supabase";
+
 /**
  * Servicio de Tutor IA para lecciones dinámicas (Tiny Lesson).
  * Utiliza Groq Cloud API (Llama 3.1) para procesar el lenguaje natural.
@@ -493,6 +495,7 @@ REGLA 1 (LONGITUD Y SELECCIÓN): Tienes prohibido recortar, abreviar o inventar 
 REGLA 2 (TEMA): Usa la categoría '${randomTheme}'.
 REGLA 3 (ORTOGRAFÍA): 'word' DEBE estar en INGLÉS, TODO EN MAYÚSCULAS, y contener ÚNICAMENTE letras de la A a la Z.
 REGLA 4 (PISTAS): 'clue' DEBE ser la traducción al ESPAÑOL. Una sola palabra exacta.
+REGLA 5 (VOCABULARIO): ${vocabRule}
 
 EJEMPLOS DE LO QUE DEBES HACER:
 { "word": "APPLE", "clue": "Manzana" }
@@ -545,4 +548,34 @@ FORMATO JSON REQUERIDO:
   },
 
   fetchGroq,
+  
+  /**
+   * Guarda un mensaje en el historial de chat de la base de datos.
+   */
+  async saveChatMessage(
+    userId: string, 
+    role: 'user' | 'assistant', 
+    content: string, 
+    scenarioId?: string, 
+    feedback?: any
+  ) {
+    try {
+      const { error } = await supabase
+        .from('chat_history')
+        .insert([{
+          user_id: userId,
+          role: role,
+          content: content,
+          scenario_id: scenarioId,
+          feedback: feedback
+        }]);
+      
+      if (error) {
+        console.warn('AITutorService.saveChatMessage failed (silent):', error.message);
+      }
+    } catch (err) {
+      // Manejar silenciosamente para no interrumpir el chat
+      console.warn('AITutorService.saveChatMessage error crítico (silent):', err);
+    }
+  }
 };

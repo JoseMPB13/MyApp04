@@ -11,10 +11,12 @@ import {
   TextInput,
 } from 'react-native';
 import { useAppTheme } from '../context/ThemeContext';
+import { useUser } from '../context/UserContext';
 import { AuthService } from '../api/auth';
 
 export default function SettingsSection({ user, onLogout, onProfileUpdate }: any) {
-  const { colors, isDarkMode, toggleTheme, updateUsername } = useAppTheme();
+  const { colors, isDarkMode, toggleTheme } = useAppTheme();
+  const { updateUser } = useUser();
   const [nameInput, setNameInput] = useState(user?.user_metadata?.username || '');
   const [saving, setSaving] = useState(false);
 
@@ -23,7 +25,7 @@ export default function SettingsSection({ user, onLogout, onProfileUpdate }: any
     setSaving(true);
     try {
       await AuthService.updateProfileUsername(user.id, nameInput.trim());
-      updateUsername(nameInput.trim()); // Actualización instantánea global
+      updateUser({ username: nameInput.trim() }); // Actualización instantánea global
       onProfileUpdate({
         ...user,
         user_metadata: { ...user.user_metadata, username: nameInput.trim() }

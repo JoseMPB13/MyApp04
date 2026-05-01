@@ -135,6 +135,31 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
     }
   };
 
+  const handleOnboarding = async () => {
+    setLoading(true);
+    try {
+      const starterWords = await VaultService.getStarterVocabulary();
+      if (starterWords.length > 0) {
+        const tasks = starterWords.map(w => 
+          VaultService.addVaultItem({
+            user_id: userId,
+            word_en: w.word_en,
+            word_es: w.word_es,
+            category: w.theme || 'General',
+            status: 'learning'
+          })
+        );
+        await Promise.all(tasks);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        loadVault();
+      }
+    } catch (error) {
+      console.error('Error during onboarding:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView 
@@ -250,6 +275,14 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
               <View style={styles.emptyContainer}>
                 <Ionicons name="journal-outline" size={60} color="#d1d8e0" />
                 <Text style={styles.emptyText}>Tu baúl está esperando tus primeras palabras.</Text>
+                
+                <TouchableOpacity 
+                  style={[styles.onboardingBtn, { backgroundColor: colors.accent }]}
+                  onPress={handleOnboarding}
+                >
+                  <Ionicons name="sparkles" size={18} color="#FFF" />
+                  <Text style={styles.onboardingBtnText}>Empezar con vocabulario esencial</Text>
+                </TouchableOpacity>
               </View>
             ) : (
               Object.entries(
@@ -337,5 +370,18 @@ const styles = StyleSheet.create({
     })
   },
   emptyContainer: { alignItems: 'center', marginTop: 60 },
-  emptyText: { color: '#95a5a6', marginTop: 16, textAlign: 'center', width: 220, fontSize: 14, fontWeight: '600' },
+  emptyText: { color: '#95a5a6', marginTop: 16, textAlign: 'center', width: 220, fontSize: 14, fontWeight: '600', marginBottom: 24 },
+  onboardingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 20,
+    gap: 8,
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
+      android: { elevation: 4 }
+    })
+  },
+  onboardingBtnText: { color: '#FFF', fontSize: 14, fontWeight: '900' },
 });

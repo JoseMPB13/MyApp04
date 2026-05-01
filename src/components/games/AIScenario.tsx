@@ -233,6 +233,9 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
         translation: iceBreaker.translation,
       };
       setMessages([firstMsg]);
+      // Guardar el rompehielo en la base de datos
+      AITutorService.saveChatMessage(userId, 'assistant', firstMsg.text, category);
+      
       const enHint = iceBreaker.suggested_reply_en || iceBreaker.suggested_reply || null;
       const esHint = iceBreaker.suggested_reply_es || null;
       if (enHint) setCurrentHint({ en: enHint, es: esHint ?? '' });
@@ -258,6 +261,9 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
     const userMsg: Message = { id: Date.now().toString(), text: inputText, sender: 'user' };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
+    // Guardar mensaje del usuario
+    AITutorService.saveChatMessage(userId, 'user', inputText, activeCategory || 'General');
+    
     setInputText('');
     setLoading(true);
 
@@ -303,6 +309,9 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
       }
 
       setMessages(prev => [...prev, aiMsg]);
+      // Guardar respuesta de la IA con su feedback
+      AITutorService.saveChatMessage(userId, 'assistant', aiMsg.text, activeCategory || 'General', aiMsg.lessonFeedback);
+      
       setTurnCount(prev => prev + 1);
       const enHint = response.suggested_reply_en || response.suggested_reply || null;
       const esHint = response.suggested_reply_es || null;

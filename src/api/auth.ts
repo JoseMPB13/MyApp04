@@ -1,5 +1,15 @@
 import { supabase } from './supabase';
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  username: string | null;
+  avatar_url: string | null;
+  preferred_language: string;
+  is_premium: boolean;
+  updated_at?: string;
+}
+
 /**
  * Servicio para manejar la autenticación con Supabase.
  */
@@ -14,16 +24,11 @@ export const AuthService = {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: { username }
+      }
     });
     if (error) throw error;
-    
-    // Once signed up, store the username inside their profile immediately
-    if (data.user) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({ id: data.user.id, email, username }, { onConflict: 'id' });
-      if (profileError) console.error("Error creating initial profile", profileError);
-    }
     
     return data;
   },
@@ -73,16 +78,19 @@ export const AuthService = {
 
 
   /**
-   * Obtener perfil extra de un usuario
+   * Obtener perfil completo de un usuario
    */
-  async getProfile(userId: string) {
+  async getProfile(userId: string): Promise<UserProfile | null> {
     const { data, error } = await supabase
       .from('profiles')
-      .select('username')
+      .select('id, email, username, avatar_url, preferred_language, is_premium')
       .eq('id', userId)
       .maybeSingle();
     
-    if (error) console.error('AuthService: error al obtener perfil:', error);
+    if (error) {
+      console.error('AuthService: error al obtener perfil:', error);
+      return null;
+    }
     return data;
   },
 
@@ -120,7 +128,7 @@ export const AuthService = {
       
       const { data: existing } = await supabase
         .from('profiles')
-        .select('id, username')
+        .select('id, username, avatar_url')
         .eq('id', userId)
         .maybeSingle();
 

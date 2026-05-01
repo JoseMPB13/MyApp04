@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 
-type TabType = 'inicio' | 'activities' | 'vault' | 'settings';
+type TabType = 'inicio' | 'activities' | 'vault' | 'settings' | 'profile';
 
 interface NavigationContextType {
   activeTab: TabType;

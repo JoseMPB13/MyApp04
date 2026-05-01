@@ -1,29 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  StyleSheet,
-  View,
-  StatusBar,
-  ActivityIndicator,
-} from 'react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AuthService } from '../src/api/auth';
-import AuthSection from '../src/views/AuthSection';
-import { MissionsService, StreakData } from '../src/api/missions';
-import ActivitiesSection from '../src/views/ActivitiesSection';
-import VaultSection from '../src/views/VaultSection';
-import InicioSection from '../src/views/InicioSection';
-import SettingsSection from '../src/views/SettingsSection';
-import { useAppTheme } from '../src/context/ThemeContext';
-import { useUser } from '../src/context/UserContext';
-import { useAppNavigation } from '../src/context/NavigationContext';
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, StatusBar, StyleSheet, View } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AuthService } from "../src/api/auth";
+import { MissionsService, StreakData } from "../src/api/missions";
+import { useAppNavigation } from "../src/context/NavigationContext";
+import { useAppTheme } from "../src/context/ThemeContext";
+import { useUser } from "../src/context/UserContext";
+import ActivitiesSection from "../src/views/ActivitiesSection";
+import AuthSection from "../src/views/AuthSection";
+import InicioSection from "../src/views/InicioSection";
+import ProfileSection from "../src/views/ProfileSection";
+import SettingsSection from "../src/views/SettingsSection";
+import VaultSection from "../src/views/VaultSection";
 
 export default function HomeScreen() {
   const { colors, isDarkMode } = useAppTheme();
-  const { updateUsername } = useUser();
+  const { updateUser } = useUser();
   const { activeTab, setActiveTab, setIsMissionActive } = useAppNavigation();
   const insets = useSafeAreaInsets();
-  
+
   const [streak, setStreak] = useState<StreakData | null>(null);
   const [session, setSession] = useState<any>(null);
   const [initializing, setInitializing] = useState(true);
@@ -32,14 +28,23 @@ export default function HomeScreen() {
     setIsMissionActive(active);
   };
 
-  const fetchFullProfile = useCallback(async (user: any) => {
-    await AuthService.ensureProfile(user.id, user.email || '');
-    const profile = await AuthService.getProfile(user.id);
-    if (profile?.username) {
-      updateUsername(profile.username);
-    }
-    return { ...user, user_metadata: { ...user.user_metadata, username: profile?.username } };
-  }, [updateUsername]);
+  const fetchFullProfile = useCallback(
+    async (user: any) => {
+      await AuthService.ensureProfile(user.id, user.email || "");
+      const profile = await AuthService.getProfile(user.id);
+      if (profile) {
+        updateUser({ 
+          username: profile.username || '', 
+          avatarUrl: profile.avatar_url 
+        });
+      }
+      return {
+        ...user,
+        user_metadata: { ...user.user_metadata, username: profile?.username },
+      };
+    },
+    [updateUser],
+  );
 
   const loadGlobalData = useCallback(async () => {
     if (!session?.user?.id) return;
@@ -60,14 +65,16 @@ export default function HomeScreen() {
       if (isMounted) setInitializing(false);
     });
 
-    const { data: authListener } = AuthService.onAuthStateChange(async (newSession) => {
-      if (newSession?.user) {
-        const fullUser = await fetchFullProfile(newSession.user);
-        if (isMounted) setSession({ ...newSession, user: fullUser });
-      } else {
-        if (isMounted) setSession(null);
-      }
-    });
+    const { data: authListener } = AuthService.onAuthStateChange(
+      async (newSession) => {
+        if (newSession?.user) {
+          const fullUser = await fetchFullProfile(newSession.user);
+          if (isMounted) setSession({ ...newSession, user: fullUser });
+        } else {
+          if (isMounted) setSession(null);
+        }
+      },
+    );
 
     return () => {
       isMounted = false;
@@ -81,13 +88,16 @@ export default function HomeScreen() {
 
   const handleMissionComplete = async (missionType: string, _data?: any) => {
     if (!session?.user?.id) return;
-    
-    const result = await MissionsService.completeMission(session.user.id, missionType);
-    
+
+    const result = await MissionsService.completeMission(
+      session.user.id,
+      missionType,
+    );
+
     if (result.success) {
       loadGlobalData();
       handleMissionStateChange(false);
-      setActiveTab('activities');
+      setActiveTab("activities");
     }
   };
 
@@ -104,31 +114,41 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background, paddingTop: insets.top }]}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: colors.background, paddingTop: insets.top },
+      ]}
+    >
       <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} />
-      
+
       <View style={styles.mainContent}>
         {/* Premium transition between tabs */}
-        <Animated.View 
-          key={activeTab} 
-          entering={FadeIn.duration(250)} 
+        <Animated.View
+          key={activeTab}
+          entering={FadeIn.duration(250)}
           exiting={FadeOut.duration(200)}
           style={{ flex: 1 }}
         >
-          {activeTab === 'inicio' && <InicioSection streak={streak} user={session.user} />}
-          {activeTab === 'activities' && (
-            <ActivitiesSection 
-              userId={session.user.id} 
-              onComplete={handleMissionComplete} 
+          {activeTab === "inicio" && (
+            <InicioSection streak={streak} user={session.user} />
+          )}
+          {activeTab === "activities" && (
+            <ActivitiesSection
+              userId={session.user.id}
+              onComplete={handleMissionComplete}
               onMissionStateChange={handleMissionStateChange}
             />
           )}
-          {activeTab === 'vault' && <VaultSection userId={session.user.id} />}
-          {activeTab === 'settings' && (
-            <SettingsSection 
+          {activeTab === "vault" && <VaultSection userId={session.user.id} />}
+          {activeTab === "profile" && <ProfileSection />}
+          {activeTab === "settings" && (
+            <SettingsSection
               user={session.user}
-              onLogout={() => AuthService.signOut()} 
-              onProfileUpdate={(newSessionUser: any) => setSession({ ...session, user: newSessionUser })}
+              onLogout={() => AuthService.signOut()}
+              onProfileUpdate={(newSessionUser: any) =>
+                setSession({ ...session, user: newSessionUser })
+              }
             />
           )}
         </Animated.View>
@@ -140,5 +160,5 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   mainContent: { flex: 1 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  centered: { flex: 1, justifyContent: "center", alignItems: "center" },
 });
