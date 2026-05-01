@@ -14,79 +14,34 @@ import ProfileSection from "../src/views/ProfileSection";
 import SettingsSection from "../src/views/SettingsSection";
 import VaultSection from "../src/views/VaultSection";
 import NavigationBar from "../src/components/NavigationBar";
-import AchievementToast from "../src/components/AchievementToast";
 
 export default function HomeScreen() {
   const { colors, isDarkMode } = useAppTheme();
-  const { updateUser } = useUser();
+  const { session, isLoading: initializing } = useUser();
   const { activeTab, setActiveTab, setIsMissionActive } = useAppNavigation();
   const insets = useSafeAreaInsets();
 
   const [streak, setStreak] = useState<StreakData | null>(null);
-  const [session, setSession] = useState<any>(null);
-  const [initializing, setInitializing] = useState(true);
 
   const handleMissionStateChange = (active: boolean) => {
     setIsMissionActive(active);
   };
 
-  const fetchFullProfile = useCallback(
-    async (user: any) => {
-      await AuthService.ensureProfile(user.id, user.email || "");
-      const profile = await AuthService.getProfile(user.id);
-      if (profile) {
-        updateUser({ 
-          username: profile.username || '', 
-          avatarUrl: profile.avatar_url 
-        });
-      }
-      return {
-        ...user,
-        user_metadata: { ...user.user_metadata, username: profile?.username },
-      };
-    },
-    [updateUser],
-  );
-
   const loadGlobalData = useCallback(async () => {
     if (!session?.user?.id) return;
-    const data = await MissionsService.getStreak(session.user.id);
-    setStreak(data);
+    try {
+      const data = await MissionsService.getStreak(session.user.id);
+      setStreak(data);
+    } catch (error) {
+      console.error("Error loading global data:", error);
+    }
   }, [session?.user?.id]);
 
   useEffect(() => {
-    let isMounted = true;
-
-    AuthService.getCurrentUser().then(async (user) => {
-      if (user) {
-        const fullUser = await fetchFullProfile(user);
-        if (isMounted) setSession({ user: fullUser });
-      } else {
-        if (isMounted) setSession(null);
-      }
-      if (isMounted) setInitializing(false);
-    });
-
-    const { data: authListener } = AuthService.onAuthStateChange(
-      async (newSession) => {
-        if (newSession?.user) {
-          const fullUser = await fetchFullProfile(newSession.user);
-          if (isMounted) setSession({ ...newSession, user: fullUser });
-        } else {
-          if (isMounted) setSession(null);
-        }
-      },
-    );
-
-    return () => {
-      isMounted = false;
-      if (authListener) authListener.subscription.unsubscribe();
-    };
-  }, [fetchFullProfile]);
-
-  useEffect(() => {
-    loadGlobalData();
-  }, [loadGlobalData]);
+    if (session?.user) {
+      loadGlobalData();
+    }
+  }, [session, loadGlobalData]);
 
   const handleMissionComplete = async (missionType: string, _data?: any) => {
     if (!session?.user?.id) return;
@@ -126,7 +81,6 @@ export default function HomeScreen() {
       <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} />
 
       <View style={styles.mainContent}>
-        {/* Premium transition between tabs */}
         <Animated.View
           key={activeTab}
           entering={FadeIn.duration(250)}
@@ -149,9 +103,7 @@ export default function HomeScreen() {
             <SettingsSection
               user={session.user}
               onLogout={() => AuthService.signOut()}
-              onProfileUpdate={(newSessionUser: any) =>
-                setSession({ ...session, user: newSessionUser })
-              }
+              onProfileUpdate={() => loadGlobalData()}
             />
           )}
         </Animated.View>
@@ -166,3 +118,4 @@ const styles = StyleSheet.create({
   mainContent: { flex: 1 },
   centered: { flex: 1, justifyContent: "center", alignItems: "center" },
 });
+

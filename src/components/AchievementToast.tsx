@@ -1,117 +1,144 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, DeviceEventEmitter, Platform } from 'react-native';
-import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
+import Animated, { SlideInUp, SlideOutUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppTheme } from '../context/ThemeContext';
+
+interface Achievement {
+  id: string;
+  name: string;
+  description?: string;
+}
 
 const AchievementToast = () => {
   const insets = useSafeAreaInsets();
-  const [visible, setVisible] = useState(false);
-  const [achievementName, setAchievementName] = useState('');
+  const { colors, isDarkMode } = useAppTheme();
+  const [queue, setQueue] = useState<Achievement[]>([]);
+  
+  // El primer elemento de la cola es el que se muestra
+  const current = queue[0] || null;
 
   useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('achievementUnlocked', ({ name }) => {
-      setAchievementName(name);
-      setVisible(true);
-      
-      if (Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-      
-      const timer = setTimeout(() => {
-        setVisible(false);
-      }, 4000);
-      
-      return () => clearTimeout(timer);
+    // Listener para recibir logros desde cualquier parte de la app
+    const sub = DeviceEventEmitter.addListener('achievementUnlocked', (achievement: Achievement) => {
+      const achievementWithId = { 
+        ...achievement, 
+        id: achievement.id || Math.random().toString() 
+      };
+      setQueue(prev => [...prev, achievementWithId]);
     });
-
     return () => sub.remove();
   }, []);
 
-  if (!visible) return null;
+  useEffect(() => {
+    // Si no hay nada en la cola, no hacemos nada
+    if (!current) return;
 
-  const topOffset = insets.top > 0 ? insets.top + 8 : 44;
+    // Feedback táctico al aparecer
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+
+    // Auto-cierre robusto tras 3.5 segundos
+    const timer = setTimeout(() => {
+      setQueue(prev => prev.slice(1));
+    }, 3500);
+
+    // Limpieza crítica para evitar bugs con múltiples logros
+    return () => clearTimeout(timer);
+  }, [current]);
+
+  if (!current) return null;
+
+  const topOffset = insets.top > 0 ? insets.top + 12 : 48;
 
   return (
-    <Animated.View 
-      entering={FadeInDown.springify().damping(14)} 
-      exiting={FadeOutUp.duration(300)}
-      style={[styles.container, { top: topOffset }]}
-    >
-      <View style={styles.toastCard}>
-        {/* Ícono izquierdo */}
-        <View style={styles.iconContainer}>
-          <Text style={styles.iconEmoji}>🏆</Text>
+    <View style={[styles.outerContainer, { top: topOffset }]} pointerEvents="none">
+      <Animated.View 
+        key={current.id}
+        entering={SlideInUp.springify().damping(20).stiffness(90)} 
+        exiting={SlideOutUp.duration(300)}
+        style={[
+          styles.toastCard, 
+          { 
+            backgroundColor: isDarkMode ? '#1E1E1E' : '#FFFFFF',
+            shadowColor: '#000',
+          }
+        ]}
+      >
+        {/* Icono Minimalista */}
+        <View style={[styles.iconWrapper, { backgroundColor: isDarkMode ? '#333' : '#F5F5F5' }]}>
+          <Ionicons name="trophy" size={22} color={colors.accent} />
         </View>
 
-        {/* Texto */}
+        {/* Texto Premium */}
         <View style={styles.textContainer}>
-          <Text style={styles.label}>¡Logro Desbloqueado!</Text>
-          <Text style={styles.name} numberOfLines={1}>{achievementName}</Text>
+          <Text style={[styles.title, { color: isDarkMode ? '#FFF' : '#000' }]}>
+            ¡Logro Desbloqueado!
+          </Text>
+          <Text style={[styles.name, { color: isDarkMode ? '#AAA' : '#666' }]} numberOfLines={1}>
+            {current.name}
+          </Text>
         </View>
 
-        {/* Destellos decorativos */}
-        <Ionicons name="sparkles" size={18} color="#FFD32D" style={{ opacity: 0.8 }} />
-      </View>
-    </Animated.View>
+        {/* Decoración sutil */}
+        <Ionicons name="star" size={14} color={colors.accent} style={{ opacity: 0.5 }} />
+      </Animated.View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  outerContainer: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: 20,
+    right: 20,
     zIndex: 9999,
-    elevation: 9999,
+    alignItems: 'center',
   },
   toastCard: {
-    backgroundColor: '#1A1A2E',
-    borderRadius: 18,
-    padding: 14,
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    padding: 12,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 211, 45, 0.4)',
-    shadowColor: '#FFD32D',
+    gap: 14,
+    // Sombras
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 12,
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 5,
+    // Borde sutil para modo oscuro
+    borderWidth: 1,
+    borderColor: 'rgba(128, 128, 128, 0.1)',
   },
-  iconContainer: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: 'rgba(255, 211, 45, 0.15)',
+  iconWrapper: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 211, 45, 0.3)',
-  },
-  iconEmoji: {
-    fontSize: 22,
   },
   textContainer: {
     flex: 1,
   },
-  label: {
-    color: '#FFD32D',
-    fontSize: 10,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 1.5,
-    marginBottom: 3,
+  title: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    marginBottom: 1,
   },
   name: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+    fontSize: 13,
+    fontWeight: '500',
   }
 });
 
 export default AchievementToast;
+
+
+
