@@ -1,10 +1,5 @@
 import { supabase } from "./supabase";
 
-/**
- * Servicio de Tutor IA para lecciones dinámicas (Tiny Lesson).
- * Utiliza Groq Cloud API (Llama 3.1) para procesar el lenguaje natural.
- */
-
 const API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
 const API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -217,24 +212,36 @@ export const AITutorService = {
     }
 
     const systemPrompt = `
-      Eres un coach de inglés. Genera una micro-lección aleatoria de inglés muy básica y útil (ej. diferencia entre in/on/at, un phrasal verb común, saludos informales, etc.).
-      
-      Devuelve ESTRICTAMENTE un JSON con este formato exacto:
+      Actúa como un profesor de inglés nativo y experto en pedagogía para hispanohablantes (Nivel A1-B1).
+      Tu objetivo es generar una "Cápsula de Aprendizaje" de alto valor.
+
+      ESTRUCTURA DE LA LECCIÓN:
+      1. Título: El concepto (ej: "Diferencia entre DO y MAKE").
+      2. Explicación: No solo definas, explica la REGLA DE ORO o el CONTEXTO de uso (máx 150 caracteres).
+      3. Ejemplo: Una frase natural y cotidiana en inglés.
+      4. Traducción: La traducción exacta.
+
+      EJEMPLO DE RESPUESTA ESPERADA:
       {
-        "title": "Título corto",
-        "explanation": "Explicación muy breve en español",
-        "exampleEn": "Ejemplo corto en inglés",
-        "exampleEs": "Traducción del ejemplo al español"
+        "title": "Uso de 'Used to'",
+        "explanation": "Utilízalo para hablar de hábitos o estados que eran ciertos en el pasado pero que ya no ocurren. Equivale a 'Solía'.",
+        "exampleEn": "I used to play soccer every Sunday.",
+        "exampleEs": "Solía jugar al fútbol todos los domingos."
       }
+
+      REGLAS CRÍTICAS:
+      - Responde ÚNICAMENTE con el objeto JSON.
+      - La explicación debe ser pedagógica y útil, no solo una traducción.
+      - El ejemplo en inglés debe ser una frase completa, no palabras sueltas.
     `;
 
     try {
-      const data = await fetchGroq([{ role: "system", content: systemPrompt }]);
+      const data = await fetchGroq([{ role: "system", content: systemPrompt }], 0.7);
       return {
         title: data.title || "Mini Lección",
         explanation: data.explanation || "¡Sigue practicando para mejorar!",
-        exampleEn: data.exampleEn || "Keep going!",
-        exampleEs: data.exampleEs || "¡Sigue adelante!",
+        exampleEn: data.exampleEn || "Learning is a journey.",
+        exampleEs: data.exampleEs || "Aprender es un viaje.",
       };
     } catch (error) {
       console.error("AITutorService.getMiniLesson Error:", error);
@@ -253,6 +260,11 @@ export const AITutorService = {
     vaultWords: string[],
     recentWords: string[] = [],
   ): Promise<WordPair[]> => {
+    // Escalabilidad: Empezar con 3 pares, subir 1 par cada 2 niveles, hasta un máximo de 10
+    const numPairs = Math.min(3 + Math.floor(level / 2), 10);
+
+    console.log(`🧠 [AI_TUTOR] Solicitando ${numPairs} pares para Nivel ${level}`);
+
     const themes = [
       "Comida y Bebida",
       "Animales Salvajes",
@@ -268,45 +280,29 @@ export const AITutorService = {
     const randomTheme = themes[Math.floor(Math.random() * themes.length)];
     console.log("🎯 [AI_TUTOR] Tema forzado para esta partida:", randomTheme);
 
-    let pairCount = 3;
-    let difficultyRule = "";
-
-    if (level <= 3) {
-      pairCount = 3;
-      difficultyRule =
-        "Genera exactamente 3 pares de palabras. El vocabulario debe ser muy básico y COMPLETAMENTE NUEVO para el usuario. No uses palabras complicadas.";
-    } else if (level >= 4 && level <= 7) {
-      pairCount = 4;
-      difficultyRule = `Genera exactamente 4 pares de palabras. Mezcla algunas palabras conocidas del usuario: [${vaultWords.slice(0, 5).join(", ")}] con palabras NUEVAS de nivel intermedio.`;
-    } else {
-      pairCount = 5;
-      difficultyRule = `Genera exactamente 5 pares de palabras. Mezcla palabras de su baúl: [${vaultWords.slice(0, 5).join(", ")}] con palabras NUEVAS de nivel avanzado o phrasal verbs complejos.`;
-    }
-
     const systemPrompt = `
-Eres un generador de vocabulario para nivel A1-B2 de inglés.
-REGLA CRÍTICA DE DIFICULTAD: ${difficultyRule}
-
-REGLAS ABSOLUTAS:
-1. TEMA OBLIGATORIO: Todas las palabras NUEVAS que generes DEBEN estar relacionadas estrictamente con la categoría: '${randomTheme}'. No uses vocabulario de familia o mascotas a menos que ese sea el tema.
-2. NO INVENTES PALABRAS. Usa únicamente sustantivos, verbos o adjetivos básicos y reales del diccionario Oxford.
-3. TRADUCCIÓN ÚNICA. La traducción al español debe ser una sola palabra exacta (ej. NO "madrina, tía", solo "Madrina").
-4. FORMATO DE TEXTO: Solo la primera letra debe ser mayúscula, el resto en minúscula. NUNCA uses todo en mayúsculas.
-5. HISTORIAL PROHIBIDO: No generes estas palabras: [${recentWords.join(", ")}].
-
-EJEMPLOS DE LO QUE DEBES DEVOLVER:
-CORRECTO: { "word": "Abuela", "translation": "Grandmother" }
-CORRECTO: { "word": "Manzana", "translation": "Apple" }
-INCORRECTO (No usar): { "word": "ABUELA", "translation": "GRANDMOTHER" } -> (Error: Todo mayúsculas)
-INCORRECTO (No usar): { "word": "Madrina", "translation": "Goodmother" } -> (Error: Palabra inventada)
-
-FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
-{
-  "pairs": [
-    { "word": "palabra_en_español", "translation": "palabra_en_inglés" }
-  ]
-}
-`;
+      Eres un generador de vocabulario para un juego de unir pares.
+      Debes generar EXACTAMENTE ${numPairs} pares de palabras (Español - Inglés).
+      
+      TEMÁTICA: '${randomTheme}'.
+      
+      VOCABULARIO DEL USUARIO (Prioridad Alta): ${vaultWords.slice(0, numPairs).join(", ")}
+      (Si el usuario tiene palabras en su baúl, úsalas obligatoriamente. Completa el resto hasta llegar a ${numPairs} con palabras nuevas del tema).
+      
+      REGLAS ABSOLUTAS:
+      1. TEMA OBLIGATORIO: Todas las palabras NUEVAS que generes DEBEN estar relacionadas estrictamente con la categoría: '${randomTheme}'.
+      2. NO INVENTES PALABRAS. Usa únicamente sustantivos, verbos o adjetivos básicos y reales del diccionario Oxford.
+      3. TRADUCCIÓN ÚNICA. La traducción al español debe ser una sola palabra exacta (ej. NO "madrina, tía", solo "Madrina").
+      4. FORMATO DE TEXTO: Solo la primera letra debe ser mayúscula, el resto en minúscula.
+      5. HISTORIAL PROHIBIDO: No generes estas palabras: [${recentWords.join(", ")}].
+      
+      FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
+      {
+        "pairs": [
+          { "word": "palabra_en_español", "translation": "palabra_en_inglés" }
+        ]
+      }
+    `;
 
     try {
       console.log(
@@ -325,8 +321,8 @@ FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
         JSON.stringify(rawPairs),
       );
 
-      // Limitar al pairCount solicitado por si la IA se excede
-      return rawPairs.slice(0, pairCount).map((p: any, index: number) => ({
+      // Limitar al numPairs solicitado por si la IA se excede
+      return rawPairs.slice(0, numPairs).map((p: any, index: number) => ({
         id: `gen-${level}-${index}-${Date.now()}`,
         matchId: index + 1,
         word: p.word,
@@ -341,12 +337,12 @@ FORMATO DE RESPUESTA (Responde ÚNICAMENTE en JSON estricto):
           !recentWords.includes(w.word.toLowerCase()),
       );
       const pool =
-        availableFallback.length >= pairCount
+        availableFallback.length >= numPairs
           ? availableFallback
           : FALLBACK_WORDS;
       const shuffledFallback = [...pool].sort(() => Math.random() - 0.5);
       return shuffledFallback
-        .slice(0, pairCount)
+        .slice(0, numPairs)
         .map((p: any, index: number) => ({
           id: `f-${level}-${index}-${Date.now()}`,
           matchId: index + 1,
@@ -488,6 +484,7 @@ MANDATORY JSON (respond ONLY with this exact structure, no markdown, no extra ke
       "Deportes",
     ];
     const randomTheme = themes[Math.floor(Math.random() * themes.length)];
+    console.log(`[Crossword] Rule: ${vocabRule}`);
 
     const systemPrompt = `
 Eres un creador de crucigramas en inglés.

@@ -69,6 +69,25 @@ export const VaultService = {
     }
 
     console.log('VaultService.addVaultItem SUCCESS:', data);
+
+    // -- LÓGICA DE LOGROS --
+    try {
+      const { count: vaultCount } = await supabase
+        .from('user_vault')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', word.user_id);
+
+      if (vaultCount) {
+        const { AchievementsService } = await import('./achievements');
+        if (vaultCount === 1) await AchievementsService.unlockAchievement(word.user_id, 'vault_1', 25, 'Curioso');
+        if (vaultCount === 10) await AchievementsService.unlockAchievement(word.user_id, 'vault_10', 100, 'Coleccionista');
+        if (vaultCount === 50) await AchievementsService.unlockAchievement(word.user_id, 'vault_50', 400, 'Bibliotecario');
+        if (vaultCount === 100) await AchievementsService.unlockAchievement(word.user_id, 'vault_100', 1000, 'Diccionario Andante');
+      }
+    } catch (achError) {
+      console.error('Error revisando logros en addVaultItem:', achError);
+    }
+
     return { success: true, data };
   },
 
@@ -85,6 +104,31 @@ export const VaultService = {
       console.error('Error updating status:', error);
       return { success: false, error };
     }
+
+    // -- LÓGICA DE LOGROS --
+    if (status === 'mastered') {
+      try {
+        const { data: wordData } = await supabase.from('user_vault').select('user_id').eq('id', wordId).single();
+        if (wordData && wordData.user_id) {
+          const userId = wordData.user_id;
+          const { count: masterCount } = await supabase
+            .from('user_vault')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', userId)
+            .eq('status', 'mastered');
+
+          if (masterCount) {
+            const { AchievementsService } = await import('./achievements');
+            if (masterCount === 1) await AchievementsService.unlockAchievement(userId, 'master_1', 50, 'Primera Victoria');
+            if (masterCount === 10) await AchievementsService.unlockAchievement(userId, 'master_10', 200, 'Dominador');
+            if (masterCount === 50) await AchievementsService.unlockAchievement(userId, 'master_50', 800, 'Erudito');
+          }
+        }
+      } catch (achError) {
+        console.error('Error revisando logros en updateWordStatus:', achError);
+      }
+    }
+
     return { success: true };
   },
 

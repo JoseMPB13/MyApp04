@@ -64,12 +64,14 @@ const VaultItem: React.FC<VaultItemProps> = ({ word, onDelete, onMarkMastered })
   const handleOpen = (direction: 'left' | 'right') => {
     if (!word.id) return;
     
+    // En ReanimatedSwipeable, un gesto hacia la izquierda ('left') revela las RightActions (Eliminar)
+    // y un gesto hacia la derecha ('right') revela las LeftActions (Dominar).
     if (direction === 'left') {
-      onMarkMastered(word.id);
-      playSuccess();
-    } else if (direction === 'right') {
       onDelete(word.id);
       playLightImpact();
+    } else if (direction === 'right') {
+      onMarkMastered(word.id);
+      playSuccess();
     }
   };
 

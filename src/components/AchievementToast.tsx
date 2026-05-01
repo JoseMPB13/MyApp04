@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, DeviceEventEmitter, Platform } from 'react-native';
-import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
+import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useAppTheme } from '../context/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AchievementToast = () => {
-  const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const [visible, setVisible] = useState(false);
   const [achievementName, setAchievementName] = useState('');
 
@@ -15,12 +15,10 @@ const AchievementToast = () => {
       setAchievementName(name);
       setVisible(true);
       
-      // Feedback Haptico
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       
-      // Auto-ocultar después de 4 segundos
       const timer = setTimeout(() => {
         setVisible(false);
       }, 4000);
@@ -33,27 +31,28 @@ const AchievementToast = () => {
 
   if (!visible) return null;
 
+  const topOffset = insets.top > 0 ? insets.top + 8 : 44;
+
   return (
     <Animated.View 
-      entering={FadeInUp.springify()} 
-      exiting={FadeOutUp}
-      style={[
-        styles.container, 
-        { 
-          backgroundColor: colors.card, 
-          borderColor: colors.accent,
-          shadowColor: colors.accent 
-        }
-      ]}
+      entering={FadeInDown.springify().damping(14)} 
+      exiting={FadeOutUp.duration(300)}
+      style={[styles.container, { top: topOffset }]}
     >
-      <View style={[styles.iconContainer, { backgroundColor: colors.accent }]}>
-        <Ionicons name="trophy" size={22} color="#FFF" />
-      </View>
-      <View style={styles.textContainer}>
-        <Text style={[styles.title, { color: colors.accent }]}>¡LOGRO DESBLOQUEADO!</Text>
-        <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
-          {achievementName}
-        </Text>
+      <View style={styles.toastCard}>
+        {/* Ícono izquierdo */}
+        <View style={styles.iconContainer}>
+          <Text style={styles.iconEmoji}>🏆</Text>
+        </View>
+
+        {/* Texto */}
+        <View style={styles.textContainer}>
+          <Text style={styles.label}>¡Logro Desbloqueado!</Text>
+          <Text style={styles.name} numberOfLines={1}>{achievementName}</Text>
+        </View>
+
+        {/* Destellos decorativos */}
+        <Ionicons name="sparkles" size={18} color="#FFD32D" style={{ opacity: 0.8 }} />
       </View>
     </Animated.View>
   );
@@ -62,39 +61,53 @@ const AchievementToast = () => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 30,
-    left: 20,
-    right: 20,
-    height: 74,
-    borderRadius: 37,
-    borderWidth: 2,
+    left: 16,
+    right: 16,
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  toastCard: {
+    backgroundColor: '#1A1A2E',
+    borderRadius: 18,
+    padding: 14,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    zIndex: 9999,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
+    gap: 12,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 211, 45, 0.4)',
+    shadowColor: '#FFD32D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
     elevation: 12,
   },
   iconContainer: {
     width: 46,
     height: 46,
     borderRadius: 23,
+    backgroundColor: 'rgba(255, 211, 45, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 211, 45, 0.3)',
+  },
+  iconEmoji: {
+    fontSize: 22,
   },
   textContainer: {
     flex: 1,
   },
-  title: {
+  label: {
+    color: '#FFD32D',
     fontSize: 10,
     fontWeight: '900',
-    letterSpacing: 1.2,
-    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    marginBottom: 3,
   },
   name: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: -0.3,

@@ -11,9 +11,11 @@ import Animated, { LinearTransition } from 'react-native-reanimated';
 import { MissionsService, StreakData } from '../api/missions';
 import { AITutorService } from '../api/ai_tutor';
 import { useAppTheme } from '../context/ThemeContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '../context/UserContext';
 import { StreakPanel } from '../components/common/StreakPanel';
 import ProgressCircle from '../components/ProgressCircle';
+import { Ionicons } from '@expo/vector-icons';
 
 const getGreeting = () => {
   const hours = new Date().getHours();
@@ -32,10 +34,33 @@ export default function InicioSection({ streak, user }: { streak: StreakData | n
   const [progress, setProgress] = useState<{ total_exp: number, current_level: number }>({ total_exp: 0, current_level: 1 });
 
   useEffect(() => {
-    AITutorService.getMiniLesson().then(lesson => {
-      setMiniLesson(lesson);
-      setLoadingLesson(false);
-    });
+    const loadLesson = async () => {
+      try {
+        const CACHE_KEY = 'daily_lesson_cache';
+        const today = new Date().toLocaleDateString('en-CA');
+        const cached = await AsyncStorage.getItem(CACHE_KEY);
+        
+        if (cached) {
+          const { lesson, date } = JSON.parse(cached);
+          if (date === today) {
+            setMiniLesson(lesson);
+            setLoadingLesson(false);
+            return;
+          }
+        }
+
+        // Si no hay caché o es de otro día, pedir nueva
+        const newLesson = await AITutorService.getMiniLesson();
+        setMiniLesson(newLesson);
+        await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ lesson: newLesson, date: today }));
+      } catch (error) {
+        console.error('Error loading daily lesson:', error);
+      } finally {
+        setLoadingLesson(false);
+      }
+    };
+
+    loadLesson();
 
     // Fetch real progress from Supabase
     if (user?.id) {
@@ -75,18 +100,23 @@ export default function InicioSection({ streak, user }: { streak: StreakData | n
             <Text style={{ fontSize: 32 }}>🦝</Text>
           </View>
           <View style={[styles.chatBubble, styles.cardShadow, { backgroundColor: colors.card }]}>
-            <Text style={[styles.coachName, { color: colors.accent }]}>Coach Raccoon</Text>
+            <View style={styles.lessonHeader}>
+              <Ionicons name="sparkles" size={16} color={colors.accent} style={{ marginRight: 6 }} />
+              <Text style={[styles.coachName, { color: colors.accent }]}>Lección del Día</Text>
+            </View>
+            
             {loadingLesson ? (
               <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 10, alignSelf: 'flex-start' }} />
             ) : (
               <>
-                <Text style={[styles.lessonTitle, { color: colors.accent }]}>
+                <Text style={[styles.lessonTitle, { color: colors.text }]}>
                   {miniLesson?.title}
                 </Text>
-                <Text style={[styles.coachMsg, { color: colors.text }]}>
+                <Text style={[styles.coachMsg, { color: colors.text, opacity: 0.8 }]}>
                   {miniLesson?.explanation}
                 </Text>
                 <View style={[styles.exampleBox, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <Text style={[styles.exampleLabel, { color: colors.accent }]}>EJEMPLO:</Text>
                   <Text style={[styles.exampleEn, { color: colors.text }]}>&quot;{miniLesson?.exampleEn}&quot;</Text>
                   <Text style={[styles.exampleEs, { color: colors.text }]}>{miniLesson?.exampleEs}</Text>
                 </View>
@@ -112,11 +142,13 @@ const styles = StyleSheet.create({
   },
   coachContext: { flexDirection: 'row', marginTop: 32, alignItems: 'flex-start' },
   raccoonAvatar: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center', borderWidth: 2 },
-  chatBubble: { flex: 1, marginLeft: 16, padding: 18, borderRadius: 22, borderTopLeftRadius: 4, minHeight: 80 },
-  coachName: { fontWeight: '900', marginBottom: 6, fontSize: 15 },
-  coachMsg: { fontSize: 14, lineHeight: 22, fontWeight: '500' },
-  lessonTitle: { fontWeight: 'bold', fontSize: 15, marginBottom: 4 },
-  exampleBox: { marginTop: 12, padding: 10, borderRadius: 8, borderWidth: 1 },
-  exampleEn: { fontWeight: 'bold', fontSize: 13, fontStyle: 'italic', marginBottom: 2 },
-  exampleEs: { fontSize: 12, opacity: 0.8 },
+  chatBubble: { flex: 1, marginLeft: 16, padding: 20, borderRadius: 24, borderTopLeftRadius: 4 },
+  lessonHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  coachName: { fontWeight: '900', fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 },
+  lessonTitle: { fontWeight: '900', fontSize: 20, marginBottom: 12, letterSpacing: -0.6 },
+  coachMsg: { fontSize: 16, lineHeight: 24, fontWeight: '500', marginBottom: 6, opacity: 0.9 },
+  exampleBox: { marginTop: 18, padding: 18, borderRadius: 20, borderWidth: 2, borderStyle: 'dashed' },
+  exampleLabel: { fontSize: 11, fontWeight: '900', marginBottom: 8, textTransform: 'uppercase', opacity: 0.6 },
+  exampleEn: { fontWeight: '900', fontSize: 18, marginBottom: 6, letterSpacing: -0.3 },
+  exampleEs: { fontSize: 14, fontWeight: '600', opacity: 0.6 },
 });

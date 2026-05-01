@@ -81,6 +81,27 @@ export const MissionsService = {
         if (insertError) throw insertError;
       }
 
+      // -- LÓGICA DE LOGROS --
+      // Importación dinámica para evitar dependencias circulares
+      const { AchievementsService } = await import('./achievements');
+
+      // 3. Revisar Logros de Racha
+      if (newStreak === 1) await AchievementsService.unlockAchievement(userId, 'streak_1', 50, 'Racha Inicial');
+      if (newStreak === 3) await AchievementsService.unlockAchievement(userId, 'streak_3', 100, 'Constancia');
+      if (newStreak === 7) await AchievementsService.unlockAchievement(userId, 'streak_7', 300, 'Imparable');
+      if (newStreak === 30) await AchievementsService.unlockAchievement(userId, 'streak_30', 1000, 'Maestro del Hábito');
+
+      // 4. Revisar Logros de Misiones Totales
+      const { count: missionCount } = await supabase
+        .from('mission_logs')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+
+      if (missionCount === 1) await AchievementsService.unlockAchievement(userId, 'mission_1', 50, 'Primer Paso');
+      if (missionCount === 10) await AchievementsService.unlockAchievement(userId, 'mission_10', 150, 'Aprendiz');
+      if (missionCount === 50) await AchievementsService.unlockAchievement(userId, 'mission_50', 500, 'Estudiante Dedicado');
+      if (missionCount === 100) await AchievementsService.unlockAchievement(userId, 'mission_100', 1500, 'Leyenda');
+
       return { success: true, streak: newStreak };
     } catch (error) {
       console.error('Error in completeMission:', error);
@@ -103,11 +124,12 @@ export const MissionsService = {
     const result: StreakData = { ...data };
 
     if (data.last_completion_date) {
+      const today = new Date().toLocaleDateString('en-CA');
       const yesterdayDate = new Date();
       yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-      const yesterday = yesterdayDate.toISOString().split('T')[0];
+      const yesterday = yesterdayDate.toLocaleDateString('en-CA');
 
-      if (data.last_completion_date < yesterday) {
+      if (data.last_completion_date < yesterday && data.last_completion_date !== today) {
         // La racha expiró, sobrescribimos para la UI (la DB se actualizará al completar otra misión)
         result.current_streak = 0;
       }

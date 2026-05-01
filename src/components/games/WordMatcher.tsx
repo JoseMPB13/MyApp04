@@ -47,6 +47,7 @@ interface Card {
   content: string;
   matchId: number;
   type: 'es' | 'en';
+  totalCount: number;
 }
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
@@ -89,7 +90,7 @@ const MatchCard = ({
         withTiming(0, { duration: 60 })
       );
     }
-  }, [isWrong]);
+  }, [isWrong, translateX]);
 
   useEffect(() => {
     if (isMatched) {
@@ -103,7 +104,7 @@ const MatchCard = ({
       opacity.value = 1;
       scale.value = 1;
     }
-  }, [isMatched]);
+  }, [isMatched, opacity, scale]);
 
   const onPressIn = () => {
     if (!isMatched && !isWrong) {
@@ -119,26 +120,30 @@ const MatchCard = ({
 
   return (
     <AnimatedTouchableOpacity
-      activeOpacity={1}
+      activeOpacity={0.7}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
       onPress={() => handleSelect(card)}
       disabled={isMatched}
       style={[
         styles.card,
-        { backgroundColor: colors.card, borderColor: colors.border },
-        isSelected && [styles.cardSelected, { borderColor: colors.accent, backgroundColor: isDarkMode ? '#28285c' : '#f8f9ff' } ],
-        isMatched && [styles.cardMatched, isDarkMode && { backgroundColor: '#1c4a30' }],
-        isWrong && [styles.cardWrong, isDarkMode && { backgroundColor: '#4a1515' }],
+        { 
+          backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : '#FFF', 
+          borderColor: colors.border,
+          height: card.totalCount > 6 ? 50 : 64 
+        },
+        isSelected && [styles.cardSelected, { borderColor: colors.accent, backgroundColor: isDarkMode ? 'rgba(87, 95, 207, 0.2)' : '#f0f3ff' } ],
+        isMatched && [styles.cardMatched, { backgroundColor: isDarkMode ? 'rgba(5, 196, 107, 0.2)' : '#e6ffef', borderColor: '#05c46b' }],
+        isWrong && [styles.cardWrong, { backgroundColor: isDarkMode ? 'rgba(255, 71, 87, 0.2)' : '#fff0f0', borderColor: '#ff4757' }],
         animatedStyle
       ]}
     >
       <Text style={[
         styles.cardText, 
-        { color: colors.text },
-        isSelected && [styles.cardTextActive, { color: colors.accent }],
-        isMatched && styles.cardTextMatched,
-        isWrong && styles.cardTextWrong
+        { color: colors.text, fontSize: card.totalCount > 8 ? 13 : 15 },
+        isSelected && { color: colors.accent, fontWeight: '900' },
+        isMatched && { color: '#05c46b', opacity: 0.8 },
+        isWrong && { color: '#ff4757' }
       ]}>
         {card.content}
       </Text>
@@ -231,8 +236,8 @@ export default function WordMatcher({
     const alreadySaved: string[] = [];
     
     words.forEach(p => {
-      esList.push({ id: `es-${p.matchId}`, content: p.word, matchId: p.matchId, type: 'es' });
-      enList.push({ id: `en-${p.matchId}`, content: p.translation, matchId: p.matchId, type: 'en' });
+      esList.push({ id: `es-${p.matchId}`, content: p.word, matchId: p.matchId, type: 'es', totalCount: words.length });
+      enList.push({ id: `en-${p.matchId}`, content: p.translation, matchId: p.matchId, type: 'en', totalCount: words.length });
       if (p.inVault) {
         alreadySaved.push(p.id);
       }
@@ -597,26 +602,24 @@ const styles = StyleSheet.create({
   
   card: {
     width: '100%',
-    minHeight: 64,
     backgroundColor: '#FFF',
-    borderRadius: 16,
-    marginBottom: 12,
+    borderRadius: 18,
+    marginBottom: 10,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 12,
     borderWidth: 2,
     borderColor: '#eef1ff',
-    borderBottomWidth: 4,
+    borderBottomWidth: 5,
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-      android: { elevation: 3 },
-      web: { boxShadow: '0px 2px 4px rgba(0,0,0,0.1)' }
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 6 },
+      android: { elevation: 4 },
+      web: { boxShadow: '0px 4px 8px rgba(0,0,0,0.1)' }
     })
   },
-  cardSelected: { borderColor: '#575fcf', backgroundColor: '#f8f9ff', opacity: 1 },
-  // Animamos 'haciendo invisible' cuando se completan
-  cardMatched: { borderColor: '#05c46b', backgroundColor: '#ebfdf2', opacity: 0.4, borderBottomWidth: 2 },
-  cardWrong: { borderColor: '#ff4757', backgroundColor: '#fff2f2' },
+  cardSelected: { borderBottomWidth: 2, transform: [{ translateY: 2 }] },
+  cardMatched: { borderBottomWidth: 2, opacity: 0.5 },
+  cardWrong: { borderBottomWidth: 2 },
   
   cardText: { fontSize: 15, fontWeight: '800', color: '#2d3436', textAlign: 'center' },
   cardTextActive: { color: '#575fcf' },

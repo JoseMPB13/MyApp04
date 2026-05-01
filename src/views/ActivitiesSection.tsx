@@ -145,8 +145,16 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
              <Text style={styles.backText}>Volver</Text>
           </TouchableOpacity>
           <AIScenario 
-            userId={userId} 
-            onComplete={() => onComplete('ai-scenario')} 
+            userId={userId}
+            exp={currentExp}
+            level={currentLevel} 
+            onComplete={async (expGain) => {
+              const { exp, level } = await MissionsService.addUserExp(userId, expGain);
+              setCurrentExp(exp);
+              setCurrentLevel(level);
+              handleExitGame();
+              onComplete('ai-scenario', { expGain });
+            }} 
           />
         </View>
       </GestureDetector>

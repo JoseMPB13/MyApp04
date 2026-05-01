@@ -9,6 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +23,7 @@ export default function AuthSection() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
 
   const handleAuth = async () => {
     if (!email || (!showForgotPassword && !password)) {
@@ -101,16 +104,17 @@ export default function AuthSection() {
   }
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-      style={styles.container}
-    >
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        style={styles.container}
+      >
       <LinearGradient colors={['#575fcf', '#3c40c6']} style={styles.gradient}>
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Ionicons name="rocket" size={40} color="#FFF" />
+            <Text style={{ fontSize: 40 }}>🦝</Text>
           </View>
-          <Text style={styles.title}>MyApp03</Text>
+          <Text style={styles.title}>Raccoon</Text>
           <Text style={styles.subtitle}>Tu Coach de Idiomas con IA</Text>
         </View>
 
@@ -133,14 +137,20 @@ export default function AuthSection() {
           {!isLogin && (
             <View style={styles.inputWrapper}>
               <Text style={styles.label}>Nombre de Usuario</Text>
-              <View style={styles.inputBox}>
-                <Ionicons name="person-outline" size={18} color="#A4B0BE" style={styles.icon} />
+              <View style={[
+                styles.inputBox,
+                focusedInput === 'username' && styles.inputBoxFocused
+              ]}>
+                <Ionicons name="person-outline" size={18} color={focusedInput === 'username' ? '#575fcf' : '#A4B0BE'} style={styles.icon} />
                 <TextInput
                   style={styles.textInput}
                   placeholder="ej. amigo99"
+                  placeholderTextColor="#575fcf80"
                   value={username}
                   onChangeText={setUsername}
                   autoCapitalize="none"
+                  onFocus={() => setFocusedInput('username')}
+                  onBlur={() => setFocusedInput(null)}
                 />
               </View>
             </View>
@@ -148,28 +158,40 @@ export default function AuthSection() {
 
           <View style={styles.inputWrapper}>
             <Text style={styles.label}>Email</Text>
-            <View style={styles.inputBox}>
-              <Ionicons name="mail-outline" size={18} color="#A4B0BE" style={styles.icon} />
+            <View style={[
+              styles.inputBox,
+              focusedInput === 'email' && styles.inputBoxFocused
+            ]}>
+              <Ionicons name="mail-outline" size={18} color={focusedInput === 'email' ? '#575fcf' : '#A4B0BE'} style={styles.icon} />
               <TextInput
                 style={styles.textInput}
                 placeholder="ejemplo@correo.com"
+                placeholderTextColor="#575fcf80"
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
+                onFocus={() => setFocusedInput('email')}
+                onBlur={() => setFocusedInput(null)}
               />
             </View>
           </View>
 
           <View style={styles.inputWrapper}>
             <Text style={styles.label}>Contraseña</Text>
-            <View style={styles.inputBox}>
-              <Ionicons name="lock-closed-outline" size={18} color="#A4B0BE" style={styles.icon} />
+            <View style={[
+              styles.inputBox,
+              focusedInput === 'password' && styles.inputBoxFocused
+            ]}>
+              <Ionicons name="lock-closed-outline" size={18} color={focusedInput === 'password' ? '#575fcf' : '#A4B0BE'} style={styles.icon} />
               <TextInput
                 style={styles.textInput}
                 placeholder="••••••••"
+                placeholderTextColor="#575fcf80"
                 secureTextEntry
                 value={password}
                 onChangeText={setPassword}
+                onFocus={() => setFocusedInput('password')}
+                onBlur={() => setFocusedInput(null)}
               />
             </View>
           </View>
@@ -200,6 +222,7 @@ export default function AuthSection() {
         </Text>
       </LinearGradient>
     </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -237,7 +260,8 @@ const styles = StyleSheet.create({
   
   inputWrapper: { marginBottom: 16 },
   label: { fontSize: 13, fontWeight: '800', color: '#2F3542', marginBottom: 8, marginLeft: 4 },
-  inputBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F2F6', borderRadius: 16, paddingHorizontal: 16, height: 56 },
+  inputBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F1F2F6', borderRadius: 16, paddingHorizontal: 16, height: 56, borderWidth: 1.5, borderColor: 'transparent' },
+  inputBoxFocused: { borderColor: '#575fcf', backgroundColor: '#FFF' },
   icon: { marginRight: 12 },
   textInput: { flex: 1, fontSize: 16, color: '#2F3542', fontWeight: '500' },
   

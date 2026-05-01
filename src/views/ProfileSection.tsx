@@ -7,6 +7,7 @@ import { useAppTheme } from '../context/ThemeContext';
 import AchievementCard from '../components/AchievementCard';
 import { Ionicons } from '@expo/vector-icons';
 import { useUser } from '../context/UserContext';
+import { useFocusEffect } from 'expo-router';
 
 const ProfileSection: React.FC = () => {
   const { colors } = useAppTheme();
@@ -17,9 +18,11 @@ const ProfileSection: React.FC = () => {
   const { username, avatarUrl } = useUser();
   const [userEmail, setUserEmail] = useState('');
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const loadData = async () => {
     try {

@@ -9,7 +9,9 @@ import {
   Platform,
   Switch,
   TextInput,
+  Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../context/ThemeContext';
 import { useUser } from '../context/UserContext';
 import { AuthService } from '../api/auth';
@@ -34,6 +36,31 @@ export default function SettingsSection({ user, onLogout, onProfileUpdate }: any
       console.error(e);
     }
     setSaving(false);
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "🗑️ Borrar Cuenta",
+      "¿Estás completamente seguro? Esta acción eliminará permanentemente tu racha, palabras guardadas y todo tu progreso. No se puede deshacer.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Borrar Permanentemente", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setSaving(true);
+              await AuthService.deleteAccount();
+              // No es necesario redirigir, onAuthStateChange lo hará solo
+            } catch (e) {
+              console.error(e);
+              Alert.alert("Error", "No se pudo borrar la cuenta. Inténtalo de nuevo.");
+              setSaving(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   return (
@@ -73,11 +100,32 @@ export default function SettingsSection({ user, onLogout, onProfileUpdate }: any
       </View>
       
       <TouchableOpacity 
-        style={[styles.authButton, styles.logoutButton]} 
+        style={[styles.authButton, styles.logoutButton, { marginBottom: 24 }]} 
         onPress={onLogout}
       >
         <Text style={styles.authButtonText}>Cerrar Sesión</Text>
       </TouchableOpacity>
+
+      {/* Tarjeta de Zona de Peligro Refinada */}
+      <View style={[styles.chatBubble, styles.cardShadow, { backgroundColor: isDarkMode ? '#1e1e1e' : '#fff', borderColor: '#ff475720', borderWidth: 1 }]}>
+        <View style={styles.dangerHeader}>
+          <Ionicons name="warning" size={18} color="#ff4757" />
+          <Text style={[styles.dangerTitle, { color: '#ff4757' }]}>Zona de Peligro</Text>
+        </View>
+        
+        <Text style={[styles.coachMsg, { color: colors.text, opacity: 0.6, fontSize: 13, marginBottom: 16 }]}>
+          Si decides borrar tu cuenta, perderás permanentemente todo tu progreso, vocabulario y logros. Esta acción no se puede deshacer.
+        </Text>
+
+        <TouchableOpacity 
+          style={[styles.deleteButton, { backgroundColor: isDarkMode ? '#ff475720' : '#fff5f5' }]} 
+          onPress={handleDeleteAccount}
+          disabled={saving}
+        >
+          <Ionicons name="trash-outline" size={20} color="#ff4757" />
+          <Text style={styles.deleteButtonText}>Eliminar mi cuenta</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -112,7 +160,7 @@ const styles = StyleSheet.create({
       web: { boxShadow: '0px 8px 12px rgba(255, 71, 87, 0.3)' }
     })
   },
-  chatBubble: { flex: 1, backgroundColor: '#FFF', padding: 18, borderRadius: 22, borderTopLeftRadius: 4, minHeight: 80 },
+  chatBubble: { backgroundColor: '#FFF', padding: 18, borderRadius: 22, borderTopLeftRadius: 4, minHeight: 80 },
   coachName: { fontWeight: '900', color: '#575fcf', marginBottom: 6, fontSize: 15 },
   coachMsg: { color: '#485460', fontSize: 14, lineHeight: 22, fontWeight: '500' },
   input: {
@@ -121,5 +169,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginTop: 8
+  },
+  dangerTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginLeft: 8,
+  },
+  dangerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#ff475740',
+  },
+  deleteButtonText: {
+    color: '#ff4757',
+    fontSize: 15,
+    fontWeight: '700'
   }
 });

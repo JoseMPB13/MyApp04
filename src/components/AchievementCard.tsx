@@ -37,39 +37,41 @@ const AchievementCard: React.FC<AchievementCardProps> = ({
   }
 
   return (
-    <Animated.View 
-      entering={FadeInDown.delay(index * 100).springify()}
-      style={containerStyle}
-    >
-      <View style={[
-        styles.iconWrapper, 
-        { backgroundColor: isUnlocked ? (isDarkMode ? '#2c2c2c' : '#F7F8FA') : 'transparent' }
-      ]}>
-        <Ionicons 
-          name={iconName} 
-          size={36} 
-          color={isUnlocked ? colors.accent : '#95a5a6'} 
-        />
-      </View>
-
-      <View style={styles.content}>
-        <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-          {title}
-        </Text>
-        <Text 
-          style={[styles.description, { color: isUnlocked ? colors.text : '#7f8c8d' }]}
-          numberOfLines={2}
-        >
-          {description}
-        </Text>
-      </View>
-
-      {!isUnlocked && (
-        <View style={styles.lockBadge}>
-          <Ionicons name="lock-closed" size={14} color="#95a5a6" />
+    <View style={{ flex: 1, margin: 6, opacity: isUnlocked ? 1 : 0.7 }}>
+      <Animated.View 
+        entering={FadeInDown.delay(index * 100).springify()}
+        style={[containerStyle, { margin: 0, opacity: 1 }]}
+      >
+        <View style={[
+          styles.iconWrapper, 
+          { backgroundColor: isUnlocked ? (isDarkMode ? '#2c2c2c' : '#F7F8FA') : 'transparent' }
+        ]}>
+          <Ionicons 
+            name={iconName} 
+            size={36} 
+            color={isUnlocked ? colors.accent : '#95a5a6'} 
+          />
         </View>
-      )}
-    </Animated.View>
+
+        <View style={styles.content}>
+          <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+            {title}
+          </Text>
+          <Text 
+            style={[styles.description, { color: isUnlocked ? colors.text : '#7f8c8d' }]}
+            numberOfLines={2}
+          >
+            {description}
+          </Text>
+        </View>
+
+        {!isUnlocked && (
+          <View style={styles.lockBadge}>
+            <Ionicons name="lock-closed" size={14} color="#95a5a6" />
+          </View>
+        )}
+      </Animated.View>
+    </View>
   );
 };
 

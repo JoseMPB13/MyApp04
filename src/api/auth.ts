@@ -68,14 +68,22 @@ export const AuthService = {
   },
 
   /**
+   * Eliminar cuenta de usuario permanentemente.
+   * Llama a la función RPC delete_user() que borra de auth.users.
+   */
+  async deleteAccount() {
+    const { error } = await supabase.rpc('delete_user');
+    if (error) throw error;
+    await AuthService.signOut();
+  },
+
+  /**
    * Obtener el usuario actual.
    */
   async getCurrentUser() {
     const { data: { user } } = await supabase.auth.getUser();
     return user;
   },
-
-
 
   /**
    * Obtener perfil completo de un usuario

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, StatusBar, StyleSheet, View } from "react-native";
+import { ActivityIndicator, StatusBar, StyleSheet, View, Text } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AuthService } from "../src/api/auth";
@@ -13,6 +13,8 @@ import InicioSection from "../src/views/InicioSection";
 import ProfileSection from "../src/views/ProfileSection";
 import SettingsSection from "../src/views/SettingsSection";
 import VaultSection from "../src/views/VaultSection";
+import NavigationBar from "../src/components/NavigationBar";
+import AchievementToast from "../src/components/AchievementToast";
 
 export default function HomeScreen() {
   const { colors, isDarkMode } = useAppTheme();
@@ -104,6 +106,7 @@ export default function HomeScreen() {
   if (initializing) {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
+        <Text style={{ fontSize: 40, marginBottom: 20 }}>🦝</Text>
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
@@ -153,6 +156,7 @@ export default function HomeScreen() {
           )}
         </Animated.View>
       </View>
+      <NavigationBar />
     </View>
   );
 }

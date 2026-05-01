@@ -16,7 +16,8 @@ import Animated, {
   withRepeat, 
   withSequence, 
   withTiming, 
-  withDelay 
+  withDelay,
+  SharedValue
 } from 'react-native-reanimated';
 import * as Speech from 'expo-speech';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +25,7 @@ import { AITutorService, FeedbackCapsule as FeedbackType, Correction, LessonFeed
 import { VaultService, VaultWord } from '../../api/vault';
 import { useAppTheme } from '../../context/ThemeContext';
 
-type Phase = 'SELECT_PRACTICE' | 'CHAT';
+type Phase = 'SELECT_PRACTICE' | 'CHAT' | 'SUMMARY';
 
 /**
  * Elimina emojis, caracteres especiales y bloques no-ASCII que rompen
@@ -112,7 +113,7 @@ const TypingBubble = () => {
   const dot3 = useSharedValue(0);
 
   useEffect(() => {
-    const anim = (sv: Animated.SharedValue<number>, delay: number) => {
+    const anim = (sv: SharedValue<number>, delay: number) => {
       sv.value = withDelay(delay, withRepeat(
         withSequence(
           withTiming(-6, { duration: 300 }),
@@ -142,7 +143,17 @@ const TypingBubble = () => {
   );
 };
 
-export default function AIScenario({ onComplete, userId }: { onComplete: () => void; userId: string }) {
+export default function AIScenario({ 
+  onComplete, 
+  userId,
+  exp = 0,
+  level = 1
+}: { 
+  onComplete: (expEarned: number) => void; 
+  userId: string;
+  exp?: number;
+  level?: number;
+}) {
   const { colors, isDarkMode } = useAppTheme();
   const [phase, setPhase] = useState<Phase>('SELECT_PRACTICE');
 
@@ -163,6 +174,7 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
   const [bonusExpVisible, setBonusExpVisible] = useState(false);
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const [usedWords, setUsedWords] = useState<string[]>([]);  // palabras del vault usadas correctamente
+  const [totalExpEarned, setTotalExpEarned] = useState(50); // Base exp for completing the chat
 
   const scrollRef = useRef<ScrollView>(null);
   const inputRef = useRef<TextInput>(null);
@@ -215,6 +227,7 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
     setShowHint(false);
     setUsedWords([]);    // reset tracked words for new session
     setHintJustUsed(false);
+    setTotalExpEarned(50); // reset EXP
 
     const wordList = wordsInCategory.map(w => w.word_en);
     const scenarioGoal = `The student is practicing words from their vocabulary vault in the category "${category}". Target words: [${wordList.join(', ')}]. Have a natural A1-level conversation that encourages the student to use these words.`;
@@ -302,6 +315,7 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
       if (isPerfect) {
         setPerfectGrammarMsgId(userMsg.id);
         setBonusExpVisible(true);
+        setTotalExpEarned(prev => prev + 5);
         console.log("\ud83d\udfe3 [CHAT] Gramática perfecta detectada, otorgando bonus de EXP");
         setTimeout(() => setBonusExpVisible(false), 3000);
       } else {
@@ -373,6 +387,33 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
               const color = CATEGORY_COLORS[i % CATEGORY_COLORS.length];
               const iconKey = cat.toLowerCase();
               const icon = CATEGORY_ICONS[iconKey] || 'book';
+              if (i === 0) {
+                return (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[
+                      styles.missionCard,
+                      styles.cardShadow,
+                      styles.missionCardWide,
+                      { backgroundColor: colors.card, borderColor: colors.border }
+                    ]}
+                    onPress={() => handleStartPractice(cat, words)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={[styles.missionIconBg, { backgroundColor: color + '20', marginBottom: 0 }]}>
+                      <Ionicons name={icon} size={30} color={color} />
+                    </View>
+                    <View style={{ flex: 1, paddingHorizontal: 16 }}>
+                      <Text style={[styles.missionTitle, { color: colors.text }]}>Práctica: {cat}</Text>
+                      <Text style={[styles.missionDesc, { color: colors.text, marginBottom: 8 }]}>{words.length} palabra{words.length !== 1 ? 's' : ''} para dominar</Text>
+                      <View style={[styles.missionStartBadge, { backgroundColor: color }]}>
+                        <Text style={styles.missionStartLabel}>▶ Iniciar</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }
+
               return (
                 <TouchableOpacity
                   key={cat}
@@ -380,7 +421,6 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
                     styles.missionCard,
                     styles.cardShadow,
                     { backgroundColor: colors.card, borderColor: colors.border },
-                    i === 0 && styles.missionCardWide,
                   ]}
                   onPress={() => handleStartPractice(cat, words)}
                   activeOpacity={0.85}
@@ -388,16 +428,68 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
                   <View style={[styles.missionIconBg, { backgroundColor: color + '20' }]}>
                     <Ionicons name={icon} size={30} color={color} />
                   </View>
-                  <Text style={[styles.missionTitle, { color: colors.text }]}>Práctica: {cat}</Text>
-                  <Text style={[styles.missionDesc, { color: colors.text }]}>{words.length} palabra{words.length !== 1 ? 's' : ''} para dominar</Text>
-                  <View style={[styles.missionStartBadge, { backgroundColor: color }]}>
-                    <Text style={styles.missionStartLabel}>▶ Iniciar</Text>
+                  <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                    <Text style={[styles.missionTitle, { color: colors.text }]}>Práctica: {cat}</Text>
+                    <Text style={[styles.missionDesc, { color: colors.text }]}>{words.length} palabra{words.length !== 1 ? 's' : ''}</Text>
+                    <View style={[styles.missionStartBadge, { backgroundColor: color, alignSelf: 'flex-start' }]}>
+                      <Text style={styles.missionStartLabel}>▶ Iniciar</Text>
+                    </View>
                   </View>
                 </TouchableOpacity>
               );
             })}
           </View>
         </ScrollView>
+      );
+    }
+
+    if (phase === 'SUMMARY') {
+      return (
+        <View style={[styles.centerContainer, { backgroundColor: colors.background, padding: 16, justifyContent: 'flex-start', paddingTop: 40 }]}>
+          <Text style={[styles.titleSuccess, isDarkMode && { color: '#2ed573' }]}>¡Victoria! 🎉</Text>
+          <View style={styles.expContainer}>
+            <Text style={[styles.expText, { color: colors.text }]}>Nivel {level} • {exp % 100}/100 EXP</Text>
+            <View style={[styles.progressBarBg, { backgroundColor: colors.border }]}>
+              <View style={[styles.progressBarFill, { width: `${exp % 100}%`, backgroundColor: colors.accent }]} />
+            </View>
+            <Text style={styles.expGainText}>+{totalExpEarned} EXP ganados (Bonus: {totalExpEarned - 50})</Text>
+          </View>
+          <Text style={[styles.subtitle, { color: colors.text, opacity: 0.7 }]}>Has practicado estas palabras de tu baúl. ¡Sigue así para dominarlas por completo!</Text>
+          
+          <ScrollView style={{ width: '100%', marginTop: 10 }}>
+            {targetWords.map((w, i) => {
+              const wordKey = w.word_en.toLowerCase().trim();
+              const isUsed = usedWords.includes(wordKey);
+
+              return (
+                <View key={i} style={[styles.summaryRow, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <View style={styles.summaryInfo}>
+                    <Text style={[styles.summaryWordEs, { color: colors.text }]}>{w.word_es}</Text>
+                    <Text style={[styles.summaryWordEn, { color: colors.accent }]}>{w.word_en}</Text>
+                  </View>
+                  {isUsed ? (
+                    <View style={styles.inVaultBadge}>
+                      <Text style={styles.inVaultText}>Usada ✅</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.inVaultBadge, { backgroundColor: isDarkMode ? '#2c2c2c' : '#F0F2F5', borderColor: colors.border }]}>
+                      <Text style={[styles.inVaultText, { color: '#95a5a6' }]}>Pendiente</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity 
+              style={[styles.primaryBtn, styles.cardShadow, { backgroundColor: colors.accent, flex: 1 }]} 
+              onPress={() => onComplete(totalExpEarned)}
+            >
+              <Text style={styles.primaryBtnText}>Volver a Misiones</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       );
     }
 
@@ -527,8 +619,8 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
           {turnCount > 5 && !loading && (
             <View style={styles.completionContainer}>
               <Text style={styles.completionTitle}>¡Lección Completada!</Text>
-              <TouchableOpacity style={[styles.primaryBtn, styles.cardShadow]} onPress={onComplete}>
-                <Text style={styles.primaryBtnText}>Terminar y Recoger Recompensas</Text>
+              <TouchableOpacity style={[styles.primaryBtn, styles.cardShadow]} onPress={() => setPhase('SUMMARY')}>
+                <Text style={styles.primaryBtnText}>Ver Resultados</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -615,9 +707,9 @@ export default function AIScenario({ onComplete, userId }: { onComplete: () => v
       keyboardVerticalOffset={Platform.OS === 'ios' ? 110 : 80}
     >
       <View style={[styles.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Tiny Lesson</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Charla con Raccoon</Text>
         <Text style={styles.headerSubtitle}>
-          {phase === 'CHAT' ? activeCategory ?? 'Tiny Lesson' : 'Práctica Rápida'}
+          {phase === 'CHAT' || phase === 'SUMMARY' ? activeCategory ?? 'Charla con Raccoon' : 'Práctica Rápida'}
         </Text>
       </View>
 
@@ -640,16 +732,16 @@ const styles = StyleSheet.create({
   phaseSubtitle: { fontSize: 15, color: '#7f8c8d', marginBottom: 24, fontWeight: '500' },
 
   // Mission selection grid
-  missionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  missionGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   missionCard: {
-    width: '47%',
+    width: '48%',
     borderRadius: 24,
     borderWidth: 1.5,
     padding: 20,
     minHeight: 160,
-    justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  missionCardWide: { width: '100%', minHeight: 130, flexDirection: 'row', alignItems: 'center', gap: 20 },
+  missionCardWide: { width: '100%', minHeight: 120, flexDirection: 'row', alignItems: 'center' },
   missionIconBg: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
   missionTitle: { fontSize: 17, fontWeight: '900', marginBottom: 4 },
   missionDesc: { fontSize: 12, fontWeight: '600', opacity: 0.55, marginBottom: 14 },
@@ -837,5 +929,21 @@ const styles = StyleSheet.create({
       web: { boxShadow: '0px 4px 8px rgba(0,0,0,0.1)' }
     })
   },
+  
+  // Summary Screen (Identical to WordMatcher)
+  titleSuccess: { fontSize: 26, fontWeight: '900', color: '#05c46b', marginBottom: 8, marginTop: 20, textAlign: 'center' },
+  subtitle: { fontSize: 16, color: '#7f8c8d', marginBottom: 20, textAlign: 'center', paddingHorizontal: 10 },
+  expContainer: { width: '100%', alignItems: 'center', marginVertical: 15 },
+  expText: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
+  progressBarBg: { width: '80%', height: 10, borderRadius: 5, overflow: 'hidden' },
+  progressBarFill: { height: '100%' },
+  expGainText: { fontSize: 12, fontWeight: '600', color: '#2ed573', marginTop: 5 },
+  summaryRow: { flexDirection: 'row', backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 12, alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#F1F2F6', borderBottomWidth: 4 },
+  summaryInfo: { flex: 1 },
+  summaryWordEs: { fontSize: 18, fontWeight: '900', color: '#1e272e' },
+  summaryWordEn: { fontSize: 15, color: '#575fcf', fontWeight: '700', marginTop: 2 },
+  inVaultBadge: { backgroundColor: 'rgba(5, 196, 107, 0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(5, 196, 107, 0.3)' },
+  inVaultText: { color: '#05c46b', fontSize: 12, fontWeight: '800' },
+  actionButtonsContainer: { flexDirection: 'row', width: '100%', justifyContent: 'space-between', marginTop: 20, marginBottom: 40 },
 });
 

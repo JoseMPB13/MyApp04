@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, ScrollView, Dimensions, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../../context/ThemeContext';
 import { AITutorService } from '../../api/ai_tutor';
@@ -37,6 +37,10 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
   const [activeClue, setActiveClue] = useState<ClueInfo | null>(null);
   const [trayLetters, setTrayLetters] = useState<{id: string, char: string, used: boolean}[]>([]);
 
+  const [vaultEnWords, setVaultEnWords] = useState<string[]>([]);
+  const [savedWords, setSavedWords] = useState<string[]>([]);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
   const setupActiveWord = useCallback((clue: ClueInfo) => {
     setActiveClue(clue);
     const letters = clue.word.split('');
@@ -55,6 +59,8 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
     try {
       const vaultWords = await VaultService.getWords(userId);
       const vaultEn = vaultWords.map((w: any) => w.word_en.toLowerCase());
+      setVaultEnWords(vaultEn);
+      
       const shuffledVault = [...vaultEn].sort(() => Math.random() - 0.5).slice(0, 5);
       
       const { items, gridSize: dynamicGridSize } = await AITutorService.generateCrosswordData(level, shuffledVault, recentWords);
@@ -95,7 +101,7 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
     } finally {
       setIsLoading(false);
     }
-  }, [level, userId]);
+  }, [level, userId, recentWords, setupActiveWord]);
 
   useEffect(() => {
     loadData();
@@ -301,12 +307,31 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
     }
   };
 
+  const handleSaveToVault = async (clue: ClueInfo) => {
+    setSavingId(clue.word);
+    try {
+      const newWord = {
+        user_id: userId,
+        word_en: clue.word.toLowerCase(),
+        word_es: clue.clue,
+        category: 'Crossword',
+        status: 'learning' as const
+      };
+      await VaultService.addVaultItem(newWord);
+      setSavedWords(prev => [...prev, clue.word]);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   if (showSummary) {
     const expGain = Math.max(10, 40 - (hintsUsed * 2));
     return (
       <View style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center' }]}>
         <Text style={[styles.titleSuccess, isDarkMode && { color: '#2ed573' }]}>¡Crucigrama Completado! 🎉</Text>
-        <View style={[styles.expContainer, { backgroundColor: isDarkMode ? '#2c2c54' : '#f8f9ff' }]}>
+        <View style={styles.expContainer}>
           <Text style={[styles.expText, { color: colors.text }]}>Nivel {level} • {exp % 100}/100 EXP</Text>
           <View style={[styles.progressBarBg, { backgroundColor: colors.border }]}>
             <View style={[styles.progressBarFill, { width: `${exp % 100}%`, backgroundColor: colors.accent }]} />
@@ -314,9 +339,50 @@ export default function CrosswordGame({ userId, level, exp, onNextLevel, onExit 
           <Text style={styles.expGainText}>+{expGain} EXP ganados</Text>
         </View>
 
+        <Text style={[styles.subtitle, { color: colors.text, opacity: 0.7 }]}>Has resuelto estas palabras. Guárdalas en tu baúl para no olvidarlas.</Text>
+        
+        <ScrollView style={{ width: '100%', marginTop: 10, paddingHorizontal: 16 }}>
+          {[...acrossClues, ...downClues].map(w => {
+            const wordLower = w.word.toLowerCase();
+            const inVault = vaultEnWords.includes(wordLower);
+            const isSaved = savedWords.includes(w.word);
+            const isSavingThis = savingId === w.word;
+
+            return (
+              <View key={w.word} style={[styles.summaryRow, styles.cardShadow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={styles.summaryInfo}>
+                  <Text style={[styles.summaryWordEs, { color: colors.text }]}>{w.clue}</Text>
+                  <Text style={[styles.summaryWordEn, { color: colors.accent }]}>{w.word}</Text>
+                </View>
+                {inVault ? (
+                  <View style={styles.inVaultBadge}>
+                    <Text style={styles.inVaultText}>En tu baúl 💎</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity 
+                    onPress={() => handleSaveToVault(w)} 
+                    style={[styles.saveBtn, isSaved && styles.savedBtn]}
+                    disabled={isSaved || isSavingThis}
+                  >
+                    {isSavingThis ? (
+                      <ActivityIndicator color="#575fcf" size="small" />
+                    ) : (
+                      <Ionicons 
+                        name={isSaved ? "bookmark" : "bookmark-outline"} 
+                        size={24} 
+                        color={isSaved ? "#FFF" : colors.accent} 
+                      />
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })}
+        </ScrollView>
+
         <View style={styles.actionButtonsContainer}>
           <TouchableOpacity 
-            style={[styles.primaryBtn, { backgroundColor: colors.accent, flex: 1, marginRight: 8 }]} 
+            style={[styles.primaryBtn, styles.cardShadow, { backgroundColor: colors.accent, flex: 1, marginRight: 8 }]} 
             onPress={() => {
               const played = [...acrossClues, ...downClues].map(c => c.word.toLowerCase());
               setRecentWords(prev => [...prev, ...played].slice(-30));
@@ -519,16 +585,32 @@ const styles = StyleSheet.create({
   trayTileText: { fontSize: 20, fontWeight: 'bold', color: '#FFF' },
   trayUndoBtn: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', marginLeft: 15 },
   
-  // Summary Styles
-  titleSuccess: { fontSize: 28, fontWeight: '800', textAlign: 'center', marginBottom: 20 },
-  expContainer: { padding: 20, borderRadius: 16, marginHorizontal: 20, marginBottom: 30, alignItems: 'center' },
-  expText: { fontSize: 16, fontWeight: '600', marginBottom: 12 },
-  progressBarBg: { height: 12, width: '100%', borderRadius: 6, backgroundColor: '#eef1ff', overflow: 'hidden', marginBottom: 12 },
-  progressBarFill: { height: '100%', borderRadius: 6 },
-  expGainText: { fontSize: 14, color: '#2ed573', fontWeight: '700' },
-  actionButtonsContainer: { flexDirection: 'row', paddingHorizontal: 20 },
-  primaryBtn: { paddingVertical: 16, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  primaryBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
-  secondaryBtn: { paddingVertical: 16, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', borderWidth: 1, borderColor: '#ccc' },
-  secondaryBtnText: { fontSize: 16, fontWeight: 'bold' },
+  // Summary Styles (Identical to WordMatcher)
+  titleSuccess: { fontSize: 26, fontWeight: '900', color: '#05c46b', marginBottom: 8, marginTop: 40, textAlign: 'center' },
+  subtitle: { fontSize: 16, color: '#7f8c8d', marginBottom: 20, textAlign: 'center', paddingHorizontal: 10 },
+  expContainer: { width: '100%', alignItems: 'center', marginVertical: 15 },
+  expText: { fontSize: 16, fontWeight: '700', marginBottom: 8 },
+  progressBarBg: { width: '80%', height: 10, borderRadius: 5, overflow: 'hidden' },
+  progressBarFill: { height: '100%' },
+  expGainText: { fontSize: 12, fontWeight: '600', color: '#2ed573', marginTop: 5 },
+  summaryRow: { flexDirection: 'row', backgroundColor: '#FFF', borderRadius: 16, padding: 16, marginBottom: 12, alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#F1F2F6', borderBottomWidth: 4 },
+  summaryInfo: { flex: 1 },
+  summaryWordEs: { fontSize: 18, fontWeight: '900', color: '#1e272e' },
+  summaryWordEn: { fontSize: 15, color: '#575fcf', fontWeight: '700', marginTop: 2 },
+  saveBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#f8f9ff', alignItems: 'center', justifyContent: 'center' },
+  savedBtn: { backgroundColor: '#05c46b' },
+  inVaultBadge: { backgroundColor: 'rgba(5, 196, 107, 0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(5, 196, 107, 0.3)' },
+  inVaultText: { color: '#05c46b', fontSize: 12, fontWeight: '800' },
+  actionButtonsContainer: { flexDirection: 'row', width: '100%', justifyContent: 'space-between', marginTop: 20, marginBottom: 40, paddingHorizontal: 16 },
+  primaryBtn: { backgroundColor: '#575fcf', paddingHorizontal: 24, paddingVertical: 18, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  primaryBtnText: { color: '#FFF', fontSize: 18, fontWeight: '900' },
+  secondaryBtn: { paddingHorizontal: 16, paddingVertical: 18, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.05)' },
+  secondaryBtnText: { fontSize: 16, fontWeight: '800' },
+  cardShadow: {
+    ...Platform.select({
+      ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
+      android: { elevation: 4 },
+      web: { boxShadow: '0px 4px 8px rgba(0,0,0,0.1)' }
+    })
+  },
 });
