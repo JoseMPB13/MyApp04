@@ -167,16 +167,24 @@ export const MissionsService = {
         .select('total_exp, current_level, lifetime_xp')
         .single();
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        if (insertError.code === '42501') {
+          // Ignorar error de RLS silenciosamente y retornar defaults
+          return { total_exp: 0, current_level: 1, lifetime_xp: 0 };
+        }
+        throw insertError;
+      }
 
       return { 
         total_exp: insertData.total_exp, 
         current_level: insertData.current_level,
         lifetime_xp: insertData.lifetime_xp || 0
       };
-    } catch (error) {
-      console.error('Error in getUserProgress:', error);
-        return { total_exp: 0, current_level: 1, lifetime_xp: 0 };
+    } catch (error: any) {
+      if (error?.code !== '42501') {
+        console.error('Error in getUserProgress:', error);
+      }
+      return { total_exp: 0, current_level: 1, lifetime_xp: 0 };
     }
   },
 

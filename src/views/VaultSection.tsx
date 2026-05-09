@@ -17,12 +17,12 @@ import { VaultService, VaultWord } from "../api/vault";
 import VaultItem from "../components/VaultItem";
 import { useAppTheme } from "../context/ThemeContext";
 import { useTranslation } from "../hooks/useTranslation";
+import { useUser } from "../context/UserContext";
+import { useDebounce } from "../hooks/useDebounce";
 
-interface VaultSectionProps {
-  userId: string;
-}
-
-const VaultSection = ({ userId }: VaultSectionProps) => {
+const VaultSection = () => {
+  const { session } = useUser();
+  const userId = session?.user?.id || '';
   const { colors } = useAppTheme();
   const [words, setWords] = useState<VaultWord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,36 +50,37 @@ const VaultSection = ({ userId }: VaultSectionProps) => {
   }, [userId, loadVault]);
 
   // Auto-translation logic for English -> Spanish
-  useEffect(() => {
-    if (activeInput !== "en" || !wordEn.trim() || wordEs.trim()) return;
+  const debouncedWordEn = useDebounce(wordEn, 1000);
+  const debouncedWordEs = useDebounce(wordEs, 1000);
 
-    const timer = setTimeout(async () => {
-      const translation = await translate(wordEn, "Spanish");
+  useEffect(() => {
+    if (activeInput !== "en" || !debouncedWordEn.trim() || wordEs.trim()) return;
+
+    const runTranslation = async () => {
+      const translation = await translate(debouncedWordEn, "Spanish");
       if (translation && !wordEs.trim()) {
         setWordEs(translation);
-        setActiveInput(null); // Clear focus to avoid loops
+        setActiveInput(null);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
-    }, 1200);
-
-    return () => clearTimeout(timer);
-  }, [wordEn, activeInput, translate, wordEs]);
+    };
+    runTranslation();
+  }, [debouncedWordEn, activeInput, translate, wordEs]);
 
   // Auto-translation logic for Spanish -> English
   useEffect(() => {
-    if (activeInput !== "es" || !wordEs.trim() || wordEn.trim()) return;
+    if (activeInput !== "es" || !debouncedWordEs.trim() || wordEn.trim()) return;
 
-    const timer = setTimeout(async () => {
-      const translation = await translate(wordEs, "English");
+    const runTranslation = async () => {
+      const translation = await translate(debouncedWordEs, "English");
       if (translation && !wordEn.trim()) {
         setWordEn(translation);
-        setActiveInput(null); // Clear focus to avoid loops
+        setActiveInput(null);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
-    }, 1200);
-
-    return () => clearTimeout(timer);
-  }, [wordEs, activeInput, translate, wordEn]);
+    };
+    runTranslation();
+  }, [debouncedWordEs, activeInput, translate, wordEn]);
 
   const handleAddWord = async () => {
     if (!userId || !wordEn || !wordEs) {

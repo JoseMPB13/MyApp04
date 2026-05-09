@@ -52,7 +52,7 @@ interface Card {
 
 const AnimatedTouchableOpacity = Animated.createAnimatedComponent(TouchableOpacity);
 
-const MatchCard = ({ 
+const MatchCard = React.memo(({ 
   card, 
   isSelected, 
   isMatched, 
@@ -106,24 +106,28 @@ const MatchCard = ({
     }
   }, [isMatched, opacity, scale]);
 
-  const onPressIn = () => {
+  const onPressIn = useCallback(() => {
     if (!isMatched && !isWrong) {
       scale.value = withTiming(0.95, { duration: 100 });
     }
-  };
+  }, [isMatched, isWrong, scale]);
 
-  const onPressOut = () => {
+  const onPressOut = useCallback(() => {
     if (!isMatched && !isWrong) {
       scale.value = withTiming(1, { duration: 100 });
     }
-  };
+  }, [isMatched, isWrong, scale]);
+
+  const onPress = useCallback(() => {
+    handleSelect(card);
+  }, [handleSelect, card]);
 
   return (
     <AnimatedTouchableOpacity
       activeOpacity={0.7}
       onPressIn={onPressIn}
       onPressOut={onPressOut}
-      onPress={() => handleSelect(card)}
+      onPress={onPress}
       disabled={isMatched}
       style={[
         styles.card,
@@ -149,7 +153,13 @@ const MatchCard = ({
       </Text>
     </AnimatedTouchableOpacity>
   );
-};
+}, (prevProps, nextProps) => {
+  return prevProps.isSelected === nextProps.isSelected &&
+         prevProps.isMatched === nextProps.isMatched &&
+         prevProps.isWrong === nextProps.isWrong &&
+         prevProps.isDarkMode === nextProps.isDarkMode &&
+         prevProps.card.id === nextProps.card.id;
+});
 
 export default function WordMatcher({ 
   words = [], 
@@ -306,7 +316,7 @@ export default function WordMatcher({
     }
   }, [selectedEs, selectedEn, words.length]);
 
-  const handleSelect = (card: Card) => {
+  const handleSelect = useCallback((card: Card) => {
     if (isProcessing) return;
     // If it's already matched, or wait state is active
     if (matchedIds.includes(card.matchId) || (wrongEs !== null)) return;
@@ -331,7 +341,7 @@ export default function WordMatcher({
       if (selectedEn?.id === card.id) setSelectedEn(null);
       else setSelectedEn(card);
     }
-  };
+  }, [isProcessing, matchedIds, wrongEs, selectedEs, selectedEn]);
 
   const handleSaveToVault = async (pair: WordPair) => {
     if (savedWords.includes(pair.id) || savingId !== null) return;

@@ -18,14 +18,16 @@ import WordMatcher from '../components/games/WordMatcher';
 import AIScenario from '../components/games/AIScenario';
 import CrosswordGame from '../components/games/CrosswordGame';
 import { useAppTheme } from '../context/ThemeContext';
+import { useUser } from '../context/UserContext';
 
 interface ActivitiesSectionProps {
-  userId: string;
   onComplete: (missionType: string, data?: any) => void;
   onMissionStateChange: (active: boolean) => void;
 }
 
-const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: ActivitiesSectionProps) => {
+const ActivitiesSection = ({ onComplete, onMissionStateChange }: ActivitiesSectionProps) => {
+  const { session } = useUser();
+  const userId = session?.user?.id || '';
   const { colors, isDarkMode } = useAppTheme();
   const [currentMission, setCurrentMission] = useState<string | null>(null);
   const [lessonWords, setLessonWords] = useState<any[]>([]);
@@ -145,7 +147,6 @@ const ActivitiesSection = ({ userId, onComplete, onMissionStateChange }: Activit
              <Text style={styles.backText}>Volver</Text>
           </TouchableOpacity>
           <AIScenario 
-            userId={userId}
             exp={currentExp}
             level={currentLevel} 
             onComplete={async (expGain) => {

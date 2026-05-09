@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, StatusBar, StyleSheet, View, Text } from "react-native";
+import { ActivityIndicator, StatusBar, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AuthService } from "../src/api/auth";
 import { MissionsService, StreakData } from "../src/api/missions";
+import NavigationBar from "../src/components/NavigationBar";
 import { useAppNavigation } from "../src/context/NavigationContext";
 import { useAppTheme } from "../src/context/ThemeContext";
 import { useUser } from "../src/context/UserContext";
@@ -13,7 +14,6 @@ import InicioSection from "../src/views/InicioSection";
 import ProfileSection from "../src/views/ProfileSection";
 import SettingsSection from "../src/views/SettingsSection";
 import VaultSection from "../src/views/VaultSection";
-import NavigationBar from "../src/components/NavigationBar";
 
 export default function HomeScreen() {
   const { colors, isDarkMode } = useAppTheme();
@@ -92,12 +92,11 @@ export default function HomeScreen() {
           )}
           {activeTab === "activities" && (
             <ActivitiesSection
-              userId={session.user.id}
               onComplete={handleMissionComplete}
               onMissionStateChange={handleMissionStateChange}
             />
           )}
-          {activeTab === "vault" && <VaultSection userId={session.user.id} />}
+          {activeTab === "vault" && <VaultSection />}
           {activeTab === "profile" && <ProfileSection />}
           {activeTab === "settings" && (
             <SettingsSection

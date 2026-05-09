@@ -29,10 +29,10 @@ export const UserProvider = ({ children }: { children: React.ReactNode }) => {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const updateUser = (data: { username?: string, avatarUrl?: string | null }) => {
+  const updateUser = React.useCallback((data: { username?: string, avatarUrl?: string | null }) => {
     if (data.username !== undefined) setUsername(data.username);
     if (data.avatarUrl !== undefined) setAvatarUrl(data.avatarUrl);
-  };
+  }, []);
 
   return (
     <UserContext.Provider value={{ 

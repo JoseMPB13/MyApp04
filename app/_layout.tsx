@@ -43,7 +43,15 @@ function RootLayoutNav() {
     // Manejar la URL con la que se abrió la app
     Linking.getInitialURL().then(handleDeepLink);
 
-    // 2. Escuchar cambios de autenticación
+    // 2. Escuchar cambios de autenticación y cargar sesión inicial
+    const initAuth = async () => {
+      // Esperamos activamente a que AsyncStorage devuelva la sesión guardada
+      const { data: { session: initialSession } } = await supabase.auth.getSession();
+      setSession(initialSession);
+      setIsLoading(false);
+    };
+    initAuth();
+
     const { data: authListener } = AuthService.onAuthStateChange(async (session) => {
       setSession(session);
       
@@ -57,11 +65,8 @@ function RootLayoutNav() {
             avatarUrl: profile.avatar_url 
           });
         }
-        // Redirigir a la pantalla principal si se verificó con éxito
-        router.replace("/");
+        // NO HACEMOS router.replace("/") porque app/index.tsx ya maneja el cambio de vista naturalmente.
       }
-      
-      setIsLoading(false);
     });
 
     return () => {
@@ -107,7 +112,3 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
-
-
-
-
